@@ -1,0 +1,27 @@
+[
+  {
+    "type": "console.navigation/section",
+    "properties": {
+      "id": "openshell",
+      "name": "OpenShell"
+    }
+  },
+  {
+    "type": "console.page/route",
+    "properties": {
+      "exact": true,
+      "path": "/openshell/playground",
+      "component": { "$codeRef": "PlaygroundPage" }
+    }
+  },
+  {
+    "type": "console.navigation/href",
+    "properties": {
+      "id": "openshell-playground",
+      "name": "Playground",
+      "href": "/openshell/playground",
+      "perspective": "admin",
+      "section": "openshell"
+    }
+  }
+]

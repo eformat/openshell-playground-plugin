@@ -1,0 +1,6 @@
+apiVersion: v2
+name: openshell-playground-plugin
+description: OpenShift Console plugin for deploying and managing OpenShell agent sandboxes
+type: application
+version: 0.1.0
+appVersion: "0.1.0"

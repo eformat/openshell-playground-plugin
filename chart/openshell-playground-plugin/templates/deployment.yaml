@@ -1,0 +1,97 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "openshell-playground-plugin.fullname" . }}
+  labels:
+    {{- include "openshell-playground-plugin.labels" . | nindent 4 }}
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      {{- include "openshell-playground-plugin.selectorLabels" . | nindent 6 }}
+  template:
+    metadata:
+      labels:
+        {{- include "openshell-playground-plugin.selectorLabels" . | nindent 8 }}
+    spec:
+      serviceAccountName: {{ include "openshell-playground-plugin.serviceAccountName" . }}
+      automountServiceAccountToken: false
+      containers:
+        - name: {{ .Chart.Name }}
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          ports:
+            - containerPort: {{ .Values.plugin.port }}
+              protocol: TCP
+          env:
+            - name: PORT
+              value: {{ .Values.plugin.port | quote }}
+            - name: PLUGIN_DIST_DIR
+              value: /app/dist
+            - name: KUBE_SA_TOKEN_PATH
+              value: /var/run/kube-sa/token
+            - name: KUBE_SA_CA_PATH
+              value: /var/run/kube-sa/ca.crt
+            {{- if .Values.tls.enabled }}
+            - name: TLS_CERT_FILE
+              value: /var/serving-cert/tls.crt
+            - name: TLS_KEY_FILE
+              value: /var/serving-cert/tls.key
+            {{- else }}
+            - name: DEV_MODE
+              value: "true"
+            {{- end }}
+          volumeMounts:
+            - name: kube-sa-token
+              readOnly: true
+              mountPath: /var/run/kube-sa
+            {{- if .Values.tls.enabled }}
+            - name: serving-cert
+              mountPath: /var/serving-cert
+              readOnly: true
+            {{- end }}
+          resources:
+            {{- toYaml .Values.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /api/health
+              port: {{ .Values.plugin.port }}
+              {{- if .Values.tls.enabled }}
+              scheme: HTTPS
+              {{- end }}
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /api/health
+              port: {{ .Values.plugin.port }}
+              {{- if .Values.tls.enabled }}
+              scheme: HTTPS
+              {{- end }}
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          securityContext:
+            runAsNonRoot: true
+            allowPrivilegeEscalation: false
+            capabilities:
+              drop:
+                - ALL
+            seccompProfile:
+              type: RuntimeDefault
+      volumes:
+        - name: kube-sa-token
+          projected:
+            sources:
+              - serviceAccountToken:
+                  path: token
+                  expirationSeconds: 3600
+              - configMap:
+                  name: kube-root-ca.crt
+                  items:
+                    - key: ca.crt
+                      path: ca.crt
+        {{- if .Values.tls.enabled }}
+        - name: serving-cert
+          secret:
+            secretName: {{ include "openshell-playground-plugin.fullname" . }}-tls
+        {{- end }}

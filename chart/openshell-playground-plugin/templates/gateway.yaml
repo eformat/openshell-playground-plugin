@@ -1,0 +1,310 @@
+{{- if .Values.gateway.enabled }}
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: {{ .Values.gateway.namespace }}
+  labels:
+    {{- include "openshell-playground-plugin.labels" . | nindent 4 }}
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: openshell-gateway
+  namespace: {{ .Values.gateway.namespace }}
+  labels:
+    {{- include "openshell-playground-plugin.labels" . | nindent 4 }}
+    app: openshell
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: openshell-sandbox
+  namespace: {{ .Values.gateway.namespace }}
+  labels:
+    {{- include "openshell-playground-plugin.labels" . | nindent 4 }}
+    app: openshell
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "openshell-playground-plugin.fullname" . }}-sandbox-scc
+  labels:
+    {{- include "openshell-playground-plugin.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:openshift:scc:privileged
+subjects:
+  - kind: ServiceAccount
+    name: openshell-sandbox
+    namespace: {{ .Values.gateway.namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "openshell-playground-plugin.fullname" . }}-gateway
+  labels:
+    {{- include "openshell-playground-plugin.labels" . | nindent 4 }}
+rules:
+  - apiGroups: [""]
+    resources: ["pods", "services", "configmaps", "secrets"]
+    verbs: ["get", "list", "watch", "create", "update", "delete"]
+  - apiGroups: [""]
+    resources: ["pods/exec"]
+    verbs: ["create"]
+  - apiGroups: ["apps"]
+    resources: ["statefulsets"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: ["extensions.agents.x-k8s.io"]
+    resources: ["sandboxtemplates", "sandboxwarmpools", "sandboxclaims"]
+    verbs: ["get", "list", "watch", "create", "update", "delete"]
+  - apiGroups: ["agents.x-k8s.io"]
+    resources: ["sandboxes"]
+    verbs: ["get", "list", "watch", "create", "update", "delete"]
+  - apiGroups: [""]
+    resources: ["events"]
+    verbs: ["get", "list", "watch", "create"]
+  - apiGroups: ["authentication.k8s.io"]
+    resources: ["tokenreviews"]
+    verbs: ["create"]
+  - apiGroups: ["authorization.k8s.io"]
+    resources: ["subjectaccessreviews"]
+    verbs: ["create"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "openshell-playground-plugin.fullname" . }}-gateway
+  labels:
+    {{- include "openshell-playground-plugin.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "openshell-playground-plugin.fullname" . }}-gateway
+subjects:
+  - kind: ServiceAccount
+    name: openshell-gateway
+    namespace: {{ .Values.gateway.namespace }}
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: openshell-certgen
+  namespace: {{ .Values.gateway.namespace }}
+  labels:
+    {{- include "openshell-playground-plugin.labels" . | nindent 4 }}
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-1"
+    "helm.sh/hook-delete-policy": before-hook-creation
+spec:
+  backoffLimit: 3
+  template:
+    spec:
+      serviceAccountName: openshell-gateway
+      restartPolicy: Never
+      containers:
+        - name: certgen
+          image: "{{ .Values.gateway.image.repository }}:{{ .Values.gateway.image.tag }}"
+          env:
+            - name: POD_NAMESPACE
+              value: {{ .Values.gateway.namespace }}
+          command:
+            - openshell-gateway
+            - generate-certs
+            - --jwt-only
+            - --jwt-secret-name
+            - openshell-jwt-keys
+            - --namespace
+            - {{ .Values.gateway.namespace }}
+---
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: openshell-gateway-config
+  namespace: {{ .Values.gateway.namespace }}
+  labels:
+    {{- include "openshell-playground-plugin.labels" . | nindent 4 }}
+data:
+  gateway.toml: |
+    [openshell]
+    version = 1
+
+    [openshell.gateway]
+    bind_address = "0.0.0.0:8080"
+    health_bind_address = "0.0.0.0:8081"
+    log_level = "info"
+    compute_drivers = ["kubernetes"]
+    disable_tls = true
+
+    [openshell.gateway.auth]
+    allow_unauthenticated_users = true
+
+    [openshell.gateway.gateway_jwt]
+    signing_key_path = "/var/run/jwt/signing.pem"
+    public_key_path = "/var/run/jwt/public.pem"
+    kid_path = "/var/run/jwt/kid"
+
+    [openshell.drivers.kubernetes]
+    namespace = "{{ .Values.gateway.namespace }}"
+    service_account_name = "openshell-sandbox"
+    default_image = "ghcr.io/nvidia/openshell-community/sandboxes/base:latest"
+    supervisor_image = "ghcr.io/nvidia/openshell/supervisor:latest"
+    grpc_endpoint = "http://openshell.{{ .Values.gateway.namespace }}.svc.cluster.local:8080"
+---
+apiVersion: apps/v1
+kind: StatefulSet
+metadata:
+  name: openshell
+  namespace: {{ .Values.gateway.namespace }}
+  labels:
+    {{- include "openshell-playground-plugin.labels" . | nindent 4 }}
+    app: openshell
+spec:
+  serviceName: openshell
+  replicas: 1
+  selector:
+    matchLabels:
+      app: openshell
+  template:
+    metadata:
+      labels:
+        app: openshell
+    spec:
+      serviceAccountName: openshell-gateway
+      containers:
+        - name: openshell
+          image: "{{ .Values.gateway.image.repository }}:{{ .Values.gateway.image.tag }}"
+          imagePullPolicy: {{ .Values.gateway.image.pullPolicy }}
+          ports:
+            - containerPort: 17670
+              protocol: TCP
+              name: grpc
+            - containerPort: 8081
+              protocol: TCP
+              name: health
+          env:
+            - name: POD_NAMESPACE
+              valueFrom:
+                fieldRef:
+                  fieldPath: metadata.namespace
+            - name: HOME
+              value: /tmp
+            - name: OPENSHELL_GATEWAY_CONFIG
+              value: /etc/openshell/gateway.toml
+            - name: OPENSHELL_DB_URL
+              value: "sqlite:///var/lib/openshell/gateway.db?mode=rwc"
+          volumeMounts:
+            - name: state
+              mountPath: /tmp/.local
+            - name: gateway-config
+              mountPath: /etc/openshell
+              readOnly: true
+            - name: jwt-keys
+              mountPath: /var/run/jwt
+              readOnly: true
+            - name: data
+              mountPath: /var/lib/openshell
+          resources:
+            {{- toYaml .Values.gateway.resources | nindent 12 }}
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8081
+            initialDelaySeconds: 15
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8081
+            initialDelaySeconds: 5
+            periodSeconds: 10
+        - name: openshell-cli
+          image: quay.io/eformat/openshell-deployer:v0.0.85
+          imagePullPolicy: Always
+          command:
+            - bash
+            - -c
+            - |
+              sleep 5
+              openshell gateway add --name local --local http://localhost:8080 2>/dev/null || true
+              openshell gateway select local 2>/dev/null || true
+              exec ttyd -W -p 7681 -t disableLeaveAlert=true -t disableResizeOverlay=true bash -c 'export HOME=/tmp TERM=xterm-256color OPENSHELL_THEME=dark TOKIO_WORKER_THREADS=4; openshell gateway add --name local --local http://localhost:8080 2>/dev/null; openshell gateway select local 2>/dev/null; exec openshell term --theme dark'
+          env:
+            - name: TERM
+              value: xterm-256color
+            - name: HOME
+              value: /tmp
+            - name: OPENSHELL_THEME
+              value: dark
+            - name: TOKIO_WORKER_THREADS
+              value: "4"
+          ports:
+            - containerPort: 7681
+              protocol: TCP
+              name: ttyd
+          resources:
+            requests:
+              cpu: 100m
+              memory: 64Mi
+            limits:
+              cpu: "2"
+              memory: 512Mi
+      volumes:
+        - name: state
+          emptyDir: {}
+        - name: gateway-config
+          configMap:
+            name: openshell-gateway-config
+        - name: jwt-keys
+          secret:
+            secretName: openshell-jwt-keys
+            optional: true
+  volumeClaimTemplates:
+    - metadata:
+        name: data
+      spec:
+        accessModes: ["ReadWriteOnce"]
+        resources:
+          requests:
+            storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: openshell
+  namespace: {{ .Values.gateway.namespace }}
+  labels:
+    {{- include "openshell-playground-plugin.labels" . | nindent 4 }}
+    app: openshell
+spec:
+  type: {{ .Values.gateway.service.type }}
+  ports:
+    - port: 8080
+      targetPort: 8080
+      protocol: TCP
+      name: grpc
+    - port: 7681
+      targetPort: 7681
+      protocol: TCP
+      name: ttyd
+  selector:
+    app: openshell
+---
+apiVersion: route.openshift.io/v1
+kind: Route
+metadata:
+  name: openshell-ttyd
+  namespace: {{ .Values.gateway.namespace }}
+  labels:
+    {{- include "openshell-playground-plugin.labels" . | nindent 4 }}
+spec:
+  to:
+    kind: Service
+    name: openshell
+  port:
+    targetPort: ttyd
+  tls:
+    termination: edge
+    insecureEdgeTerminationPolicy: Redirect
+{{- end }}
