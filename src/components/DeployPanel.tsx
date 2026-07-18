@@ -4,7 +4,6 @@ import {
   FormGroup,
   FormSelect,
   FormSelectOption,
-  TextInput,
   NumberInput,
   Button,
   Alert,
@@ -125,13 +124,20 @@ const DeployPanel: React.FC<DeployPanelProps> = ({ namespace, onDeployed }) => {
       </FormGroup>
 
       <FormGroup label="Model" fieldId="model" style={{ marginBottom: 12 }}>
-        <TextInput
+        <FormSelect
           id="model"
           value={model}
           onChange={(_e, val) => setModel(val)}
-          placeholder="claude-sonnet-4-6"
           isDisabled={!namespace}
-        />
+        >
+          <FormSelectOption value="claude-sonnet-4-6" label="Claude Sonnet 4.6 (1M)" />
+          <FormSelectOption value="claude-sonnet-5" label="Claude Sonnet 5 (1M)" />
+          <FormSelectOption value="claude-opus-4-6" label="Claude Opus 4.6 (1M)" />
+          <FormSelectOption value="claude-opus-4-7" label="Claude Opus 4.7 (1M)" />
+          <FormSelectOption value="claude-opus-4-8" label="Claude Opus 4.8 (1M)" />
+          <FormSelectOption value="claude-fable-5" label="Claude Fable 5 (1M)" />
+          <FormSelectOption value="claude-haiku-4-5-20251001" label="Claude Haiku 4.5 (200k)" />
+        </FormSelect>
       </FormGroup>
 
       <FormGroup label="Warm Pool" fieldId="warm-pool" style={{ marginBottom: 12 }}>
