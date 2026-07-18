@@ -95,70 +95,47 @@ const DeployPanel: React.FC<DeployPanelProps> = ({ namespace, onDeployed }) => {
         <Alert variant="danger" isInline title={error} style={{ marginBottom: 12 }} />
       )}
 
-      <FormGroup label="Agent Type" fieldId="agent-type" style={{ marginBottom: 12 }}>
-        <FormSelect
-          id="agent-type"
-          value={agentType}
-          onChange={(_e, val) => setAgentType(val)}
-          isDisabled={!namespace}
-        >
-          {AGENT_TYPES.map((at) => (
-            <FormSelectOption key={at.name} value={at.name} label={at.displayName} />
-          ))}
-        </FormSelect>
-      </FormGroup>
+      <div className="os-deploy-panel__grid">
+        <FormGroup label="Agent Type" fieldId="agent-type">
+          <FormSelect id="agent-type" value={agentType} onChange={(_e, val) => setAgentType(val)} isDisabled={!namespace}>
+            {AGENT_TYPES.map((at) => (
+              <FormSelectOption key={at.name} value={at.name} label={at.displayName} />
+            ))}
+          </FormSelect>
+        </FormGroup>
 
-      <FormGroup label="Provider" fieldId="provider" style={{ marginBottom: 12 }}>
-        <FormSelect
-          id="provider"
-          value={provider}
-          onChange={handleProviderChange}
-          isDisabled={!namespace}
-        >
-          <FormSelectOption value="" label="-- Select provider --" isDisabled />
-          <FormSelectOption value={CREATE_PROVIDER_VALUE} label="+ Create new provider..." />
-          {providers.map((p) => (
-            <FormSelectOption key={p.name} value={p.name} label={`${p.name} (${p.type})`} />
-          ))}
-        </FormSelect>
-      </FormGroup>
+        <FormGroup label="Provider" fieldId="provider">
+          <FormSelect id="provider" value={provider} onChange={handleProviderChange} isDisabled={!namespace}>
+            <FormSelectOption value="" label="-- Select --" isDisabled />
+            <FormSelectOption value={CREATE_PROVIDER_VALUE} label="+ New provider..." />
+            {providers.map((p) => (
+              <FormSelectOption key={p.name} value={p.name} label={`${p.name} (${p.type})`} />
+            ))}
+          </FormSelect>
+        </FormGroup>
 
-      <FormGroup label="Model" fieldId="model" style={{ marginBottom: 12 }}>
-        <FormSelect
-          id="model"
-          value={model}
-          onChange={(_e, val) => setModel(val)}
-          isDisabled={!namespace}
-        >
-          <FormSelectOption value="claude-sonnet-4-6" label="Claude Sonnet 4.6 (1M)" />
-          <FormSelectOption value="claude-sonnet-5" label="Claude Sonnet 5 (1M)" />
-          <FormSelectOption value="claude-opus-4-6" label="Claude Opus 4.6 (1M)" />
-          <FormSelectOption value="claude-opus-4-7" label="Claude Opus 4.7 (1M)" />
-          <FormSelectOption value="claude-opus-4-8" label="Claude Opus 4.8 (1M)" />
-          <FormSelectOption value="claude-fable-5" label="Claude Fable 5 (1M)" />
-          <FormSelectOption value="claude-haiku-4-5-20251001" label="Claude Haiku 4.5 (200k)" />
-        </FormSelect>
-      </FormGroup>
+        <FormGroup label="Model" fieldId="model">
+          <FormSelect id="model" value={model} onChange={(_e, val) => setModel(val)} isDisabled={!namespace}>
+            <FormSelectOption value="claude-sonnet-4-6" label="Sonnet 4.6 (1M)" />
+            <FormSelectOption value="claude-sonnet-5" label="Sonnet 5 (1M)" />
+            <FormSelectOption value="claude-opus-4-6" label="Opus 4.6 (1M)" />
+            <FormSelectOption value="claude-opus-4-7" label="Opus 4.7 (1M)" />
+            <FormSelectOption value="claude-opus-4-8" label="Opus 4.8 (1M)" />
+            <FormSelectOption value="claude-fable-5" label="Fable 5 (1M)" />
+            <FormSelectOption value="claude-haiku-4-5-20251001" label="Haiku 4.5 (200k)" />
+          </FormSelect>
+        </FormGroup>
 
-      <FormGroup label="Warm Pool" fieldId="warm-pool" style={{ marginBottom: 12 }}>
-        <FormSelect
-          id="warm-pool"
-          value={warmPool}
-          onChange={(_e, val) => setWarmPool(val)}
-          isDisabled={!namespace}
-        >
-          <FormSelectOption value="" label="Default" />
-          {warmPools.map((wp) => (
-            <FormSelectOption
-              key={wp.name}
-              value={wp.name}
-              label={`${wp.name} (${wp.available}/${wp.replicas} available)`}
-            />
-          ))}
-        </FormSelect>
-      </FormGroup>
+        <FormGroup label="Warm Pool" fieldId="warm-pool">
+          <FormSelect id="warm-pool" value={warmPool} onChange={(_e, val) => setWarmPool(val)} isDisabled={!namespace}>
+            <FormSelectOption value="" label="Default" />
+            {warmPools.map((wp) => (
+              <FormSelectOption key={wp.name} value={wp.name} label={`${wp.name} (${wp.available}/${wp.replicas})`} />
+            ))}
+          </FormSelect>
+        </FormGroup>
 
-      <div className="os-deploy-panel__actions">
+        <div className="os-deploy-panel__actions">
         <Button
           variant="primary"
           onClick={handleDeploy}
@@ -179,6 +156,7 @@ const DeployPanel: React.FC<DeployPanelProps> = ({ namespace, onDeployed }) => {
           }}
           widthChars={2}
         />
+        </div>
       </div>
 
       <CredentialsModal

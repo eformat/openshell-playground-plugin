@@ -151,6 +151,7 @@ data:
     default_image = "ghcr.io/nvidia/openshell-community/sandboxes/base:latest"
     supervisor_image = "ghcr.io/nvidia/openshell/supervisor:latest"
     grpc_endpoint = "http://openshell.{{ .Values.gateway.namespace }}.svc.cluster.local:8080"
+    workspace_default_storage_size = "{{ .Values.gateway.workspaceSize | default "2Gi" }}"
 ---
 apiVersion: apps/v1
 kind: StatefulSet

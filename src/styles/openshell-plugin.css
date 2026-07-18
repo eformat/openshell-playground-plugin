@@ -28,8 +28,8 @@
 }
 
 .os-top-row__deploy {
-  min-width: 280px;
-  max-width: 340px;
+  min-width: 400px;
+  max-width: 520px;
 }
 
 .os-top-row__agents {
@@ -44,11 +44,22 @@
   background: var(--pf-t--global--background--color--secondary--default);
 }
 
+.os-deploy-panel__grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px 16px;
+}
+
+.os-deploy-panel__full {
+  grid-column: 1 / -1;
+}
+
 .os-deploy-panel__actions {
   display: flex;
   align-items: center;
   gap: 12px;
   margin-top: 12px;
+  grid-column: 1 / -1;
 }
 
 /* === Agent List === */
