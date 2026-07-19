@@ -70,6 +70,13 @@ print('opencode.json configured:', ', '.join(ms))
   fi
 fi`;
 
+const COPILOT_SETUP = `export COPILOT_PROVIDER_BASE_URL=https://inference.local/v1
+export COPILOT_PROVIDER_API_KEY=unused
+COPILOT_MODEL=$(curl -sk https://inference.local/v1/models 2>/dev/null | python3 -c "import sys,json;d=json.load(sys.stdin);print(d['data'][0]['id'])" 2>/dev/null)
+[ -n "$COPILOT_MODEL" ] && export COPILOT_MODEL
+echo "Copilot ready. Run: copilot"
+echo "  Provider: inference.local (model: \${COPILOT_MODEL:-not detected})"`;
+
 const DEFAULT_SETUP = `echo "Sandbox ready."`;
 
 function agentSetup(agentType: string): string {
@@ -77,6 +84,7 @@ function agentSetup(agentType: string): string {
     case 'claude': return CLAUDE_SETUP;
     case 'codex': return CODEX_SETUP;
     case 'opencode': return OPENCODE_SETUP;
+    case 'copilot': return COPILOT_SETUP;
     default: return DEFAULT_SETUP;
   }
 }
