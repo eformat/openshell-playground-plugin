@@ -2,10 +2,12 @@ package main
 
 import (
 	"crypto/tls"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
@@ -16,6 +18,29 @@ import (
 type server struct {
 	client    kubernetes.Interface
 	dynClient dynamic.Interface
+	baseConfig *rest.Config
+}
+
+func clientFromRequest(r *http.Request, baseConfig *rest.Config) (kubernetes.Interface, dynamic.Interface, error) {
+	token := r.Header.Get("Authorization")
+	if strings.HasPrefix(token, "Bearer ") {
+		token = token[7:]
+	}
+	if token == "" {
+		return nil, nil, fmt.Errorf("no authorization token")
+	}
+	cfg := rest.CopyConfig(baseConfig)
+	cfg.BearerToken = token
+	cfg.BearerTokenFile = ""
+	client, err := kubernetes.NewForConfig(cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	dynClient, err := dynamic.NewForConfig(cfg)
+	if err != nil {
+		return nil, nil, err
+	}
+	return client, dynClient, nil
 }
 
 func buildConfig() (*rest.Config, error) {
@@ -64,8 +89,9 @@ func main() {
 	}
 
 	s := &server{
-		client:    clientset,
-		dynClient: dynClient,
+		client:     clientset,
+		dynClient:  dynClient,
+		baseConfig: config,
 	}
 
 	mux := http.NewServeMux()
@@ -82,6 +108,8 @@ func main() {
 	mux.HandleFunc("/api/agents/", s.handleAgentActions)
 	mux.HandleFunc("/api/deploy", s.handleDeploy)
 	mux.HandleFunc("/api/gateway/pod", s.handleGatewayPod)
+	mux.HandleFunc("/api/gateway/deploy", s.handleGatewayDeploy)
+	mux.HandleFunc("/api/ttyd/", s.handleTtydProxy)
 
 	distDir := os.Getenv("PLUGIN_DIST_DIR")
 	if distDir == "" {

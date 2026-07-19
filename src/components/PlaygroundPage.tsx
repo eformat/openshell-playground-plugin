@@ -8,6 +8,7 @@ import {
   FormSelectOption,
   Button,
   Label,
+  Spinner,
   Split,
   SplitItem,
 } from '@patternfly/react-core';
@@ -15,6 +16,7 @@ import DeployPanel from './DeployPanel';
 import AgentList from './AgentList';
 import OpenshellTerm from './OpenshellTerm';
 import SandboxTerminals from './SandboxTerminals';
+import GatewaySetup from './GatewaySetup';
 import { AgentInfo, NamespaceInfo } from '../utils/types';
 import * as api from '../utils/api';
 import '../styles/openshell-plugin.css';
@@ -39,14 +41,33 @@ const PlaygroundPage: React.FC = () => {
   const [agents, setAgents] = React.useState<AgentInfo[]>([]);
   const [loadingAgents, setLoadingAgents] = React.useState(false);
   const [agentError, setAgentError] = React.useState('');
+  const [gatewayExists, setGatewayExists] = React.useState<boolean | null>(null);
+  const [checkingGateway, setCheckingGateway] = React.useState(false);
   const [openTerminals, setOpenTerminals] = React.useState<AgentTerminal[]>([]);
   const [activeTerminal, setActiveTerminal] = React.useState('');
   const [splitPos, setSplitPos] = React.useState(50);
   const prevNamespaceRef = React.useRef('');
   const splitRef = React.useRef<HTMLDivElement>(null);
 
-  const namespace = sdkNs ? sdkNs[0] : localNamespace;
+  const rawNamespace = sdkNs ? sdkNs[0] : localNamespace;
+  const namespace = rawNamespace && !rawNamespace.startsWith('#') ? rawNamespace : localNamespace;
   const setNamespace = sdkNs ? sdkNs[1] : setLocalNamespace;
+
+  const checkGateway = React.useCallback(async () => {
+    if (!namespace) {
+      setGatewayExists(null);
+      return;
+    }
+    setCheckingGateway(true);
+    try {
+      await api.getGatewayPod(namespace);
+      setGatewayExists(true);
+    } catch {
+      setGatewayExists(false);
+    } finally {
+      setCheckingGateway(false);
+    }
+  }, [namespace]);
 
   React.useEffect(() => {
     const prev = prevNamespaceRef.current;
@@ -56,8 +77,10 @@ const PlaygroundPage: React.FC = () => {
       setAgentError('');
       setOpenTerminals([]);
       setActiveTerminal('');
+      setGatewayExists(null);
     }
-  }, [namespace]);
+    checkGateway();
+  }, [namespace, checkGateway]);
 
   React.useEffect(() => {
     const loadNamespaces = (retries = 2) => {
@@ -174,41 +197,55 @@ const PlaygroundPage: React.FC = () => {
         </ToolbarContent>
       </Toolbar>
 
-      <Split hasGutter className="os-top-row">
-        <SplitItem className="os-top-row__deploy">
-          <DeployPanel key={namespace || '__none__'} namespace={namespace} onDeployed={loadAgents} />
-        </SplitItem>
-        <SplitItem isFilled className="os-top-row__agents">
-          <Title headingLevel="h3" size="lg" style={{ marginBottom: 16 }}>
-            Agent List
-          </Title>
-          <AgentList
-            namespace={namespace}
-            agents={agents}
-            loading={loadingAgents}
-            error={agentError}
-            onOpenTerminal={handleOpenTerminal}
-            onRefresh={loadAgents}
-          />
-        </SplitItem>
-      </Split>
+      {!namespace ? (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
+          <p>Select a namespace to get started.</p>
+        </div>
+      ) : checkingGateway ? (
+        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
+          <Spinner size="xl" />
+        </div>
+      ) : gatewayExists === false ? (
+        <GatewaySetup namespace={namespace} onDeployed={checkGateway} />
+      ) : (
+        <>
+          <Split hasGutter className="os-top-row">
+            <SplitItem className="os-top-row__deploy">
+              <DeployPanel key={namespace || '__none__'} namespace={namespace} onDeployed={loadAgents} />
+            </SplitItem>
+            <SplitItem isFilled className="os-top-row__agents">
+              <Title headingLevel="h3" size="lg" style={{ marginBottom: 16 }}>
+                Agent List
+              </Title>
+              <AgentList
+                namespace={namespace}
+                agents={agents}
+                loading={loadingAgents}
+                error={agentError}
+                onOpenTerminal={handleOpenTerminal}
+                onRefresh={loadAgents}
+              />
+            </SplitItem>
+          </Split>
 
-      <div className="os-terminal-split" ref={splitRef}>
-        <div className="os-terminal-split__left" style={{ width: `${splitPos}%` }}>
-          <OpenshellTerm key={`term-${namespace}`} namespace={namespace} />
-        </div>
-        <div className="os-terminal-split__divider" onMouseDown={handleDividerDrag} />
-        <div className="os-terminal-split__right" style={{ width: `${100 - splitPos}%` }}>
-          <SandboxTerminals
-            agents={openTerminals}
-            activeAgent={activeTerminal}
-            currentNamespace={namespace}
-            onSelectTab={(key) => setActiveTerminal(key)}
-            onCloseTab={handleCloseTab}
-            onCloseAll={() => setOpenTerminals([])}
-          />
-        </div>
-      </div>
+          <div className="os-terminal-split" ref={splitRef}>
+            <div className="os-terminal-split__left" style={{ width: `${splitPos}%` }}>
+              <OpenshellTerm key={`term-${namespace}`} namespace={namespace} />
+            </div>
+            <div className="os-terminal-split__divider" onMouseDown={handleDividerDrag} />
+            <div className="os-terminal-split__right" style={{ width: `${100 - splitPos}%` }}>
+              <SandboxTerminals
+                agents={openTerminals}
+                activeAgent={activeTerminal}
+                currentNamespace={namespace}
+                onSelectTab={(key) => setActiveTerminal(key)}
+                onCloseTab={handleCloseTab}
+                onCloseAll={() => setOpenTerminals([])}
+              />
+            </div>
+          </div>
+        </>
+      )}
     </div>
   );
 };

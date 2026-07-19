@@ -291,21 +291,4 @@ spec:
       name: ttyd
   selector:
     app: openshell
----
-apiVersion: route.openshift.io/v1
-kind: Route
-metadata:
-  name: openshell-ttyd
-  namespace: {{ .Values.gateway.namespace }}
-  labels:
-    {{- include "openshell-playground-plugin.labels" . | nindent 4 }}
-spec:
-  to:
-    kind: Service
-    name: openshell
-  port:
-    targetPort: ttyd
-  tls:
-    termination: edge
-    insecureEdgeTerminationPolicy: Redirect
 {{- end }}

@@ -65,6 +65,8 @@
 /* === Agent List === */
 .os-agent-list {
   min-height: 80px;
+  max-height: 200px;
+  overflow-y: auto;
 }
 
 /* === Status Indicators === */

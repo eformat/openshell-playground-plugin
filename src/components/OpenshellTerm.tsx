@@ -15,29 +15,9 @@ const OpenshellTerm: React.FC<OpenshellTermProps> = ({ namespace }) => {
       setTtydUrl('');
       return;
     }
-    setLoading(true);
+    setTtydUrl(`/api/proxy/plugin/openshell-playground-plugin/backend/api/ttyd/?ns=${encodeURIComponent(namespace)}`);
+    setLoading(false);
     setError('');
-
-    const fetchRoute = async () => {
-      try {
-        const resp = await fetch(
-          `/api/kubernetes/apis/route.openshift.io/v1/namespaces/${encodeURIComponent(namespace)}/routes/openshell-ttyd`,
-        );
-        if (!resp.ok) throw new Error('ttyd route not found');
-        const route = await resp.json();
-        const host = route.spec?.host;
-        if (host) {
-          setTtydUrl(`https://${host}`);
-        } else {
-          throw new Error('ttyd route has no host');
-        }
-      } catch (err: any) {
-        setError(err.message || 'Failed to find ttyd route');
-      } finally {
-        setLoading(false);
-      }
-    };
-    fetchRoute();
   }, [namespace]);
 
   if (!namespace) return null;

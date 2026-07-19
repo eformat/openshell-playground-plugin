@@ -60,6 +60,12 @@ export async function createProvider(req: CreateProviderRequest): Promise<{ stat
   });
 }
 
+export async function deleteProvider(name: string, namespace: string): Promise<void> {
+  await request(`/providers?ns=${encodeURIComponent(namespace)}&name=${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+  });
+}
+
 export async function listWarmPools(namespace: string): Promise<WarmPoolInfo[]> {
   return request<WarmPoolInfo[]>(`/warmpools?ns=${encodeURIComponent(namespace)}`);
 }
@@ -87,4 +93,11 @@ export async function getAgentPod(name: string, namespace: string): Promise<PodI
 
 export async function getGatewayPod(namespace: string): Promise<PodInfo> {
   return request<PodInfo>(`/gateway/pod?ns=${encodeURIComponent(namespace)}`);
+}
+
+export async function deployGateway(namespace: string): Promise<{ status: string }> {
+  return request('/gateway/deploy', {
+    method: 'POST',
+    body: JSON.stringify({ namespace }),
+  });
 }

@@ -11,10 +11,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
 	"k8s.io/client-go/kubernetes/scheme"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/remotecommand"
 )
 
-func execInGateway(ctx context.Context, client kubernetes.Interface, namespace, command string) (string, error) {
+func execInGateway(ctx context.Context, client kubernetes.Interface, config *rest.Config, namespace, command string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
 
@@ -47,9 +48,12 @@ func execInGateway(ctx context.Context, client kubernetes.Interface, namespace, 
 
 	containerName := "openshell-cli"
 
-	config, err := buildConfig()
-	if err != nil {
-		return "", fmt.Errorf("failed to get k8s config: %w", err)
+	if config == nil {
+		var cfgErr error
+		config, cfgErr = buildConfig()
+		if cfgErr != nil {
+			return "", fmt.Errorf("failed to get k8s config: %w", cfgErr)
+		}
 	}
 
 	wrappedCmd := fmt.Sprintf("export HOME=/tmp; %s", command)

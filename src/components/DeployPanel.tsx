@@ -60,6 +60,21 @@ const DeployPanel: React.FC<DeployPanelProps> = ({ namespace, onDeployed }) => {
     }).catch(() => {});
   };
 
+  const handleDeleteProvider = async () => {
+    if (!provider || !namespace) return;
+    if (!confirm(`Delete provider "${provider}"?`)) return;
+    try {
+      await api.deleteProvider(provider, namespace);
+      setProvider('');
+      api.listProviders(namespace).then((p) => {
+        setProviders(p);
+        if (p.length > 0) setProvider(p[0].name);
+      }).catch(() => {});
+    } catch (err: any) {
+      setError(err.message || 'Failed to delete provider');
+    }
+  };
+
   const handleDeploy = async () => {
     if (!namespace || !agentType || !provider) {
       setError('Please select namespace, agent type, and provider');
@@ -105,13 +120,20 @@ const DeployPanel: React.FC<DeployPanelProps> = ({ namespace, onDeployed }) => {
         </FormGroup>
 
         <FormGroup label="Provider" fieldId="provider">
-          <FormSelect id="provider" value={provider} onChange={handleProviderChange} isDisabled={!namespace}>
-            <FormSelectOption value="" label="-- Select --" isDisabled />
-            <FormSelectOption value={CREATE_PROVIDER_VALUE} label="+ New provider..." />
-            {providers.map((p) => (
-              <FormSelectOption key={p.name} value={p.name} label={`${p.name} (${p.type})`} />
-            ))}
-          </FormSelect>
+          <div style={{ display: 'flex', gap: 4 }}>
+            <FormSelect id="provider" value={provider} onChange={handleProviderChange} isDisabled={!namespace} style={{ flex: 1 }}>
+              <FormSelectOption value="" label="-- Select --" isDisabled />
+              <FormSelectOption value={CREATE_PROVIDER_VALUE} label="+ New provider..." />
+              {providers.map((p) => (
+                <FormSelectOption key={p.name} value={p.name} label={`${p.name} (${p.type})`} />
+              ))}
+            </FormSelect>
+            {provider && provider !== CREATE_PROVIDER_VALUE && (
+              <Button variant="plain" size="sm" onClick={handleDeleteProvider} aria-label="Delete provider" style={{ padding: '4px 6px', color: 'var(--pf-t--global--color--status--danger--default)' }}>
+                x
+              </Button>
+            )}
+          </div>
         </FormGroup>
 
         <FormGroup label="Model" fieldId="model">
