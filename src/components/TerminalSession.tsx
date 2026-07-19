@@ -135,9 +135,12 @@ const TerminalSession: React.FC<TerminalSessionProps> = ({
   }, []);
 
   return (
-    <div style={{ display: isActive ? 'flex' : 'none', flexDirection: 'column', height: '100%' }}>
+    <div style={{ display: isActive ? 'flex' : 'none', flexDirection: 'column', height: '100%', position: 'relative' }}>
+      <div style={{ flex: 1, overflow: 'hidden' }}>
+        <Terminal ref={terminalRef} onData={handleData} onResize={handleResize} />
+      </div>
       {status === 'error' && (
-        <div style={{ padding: 16 }}>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', flexDirection: 'column', justifyContent: 'center', alignItems: 'center', background: 'var(--pf-t--global--background--color--primary--default, #1e1e2e)' }}>
           <Alert variant="danger" isInline title={errorMessage} />
           <Button variant="secondary" onClick={connect} style={{ marginTop: 8 }}>
             Reconnect
@@ -145,13 +148,8 @@ const TerminalSession: React.FC<TerminalSessionProps> = ({
         </div>
       )}
       {status === 'connecting' && (
-        <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100%' }}>
+        <div style={{ position: 'absolute', inset: 0, display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'var(--pf-t--global--background--color--primary--default, #1e1e2e)' }}>
           <Spinner size="xl" />
-        </div>
-      )}
-      {(status === 'connected' || status === 'closed') && (
-        <div style={{ flex: 1, overflow: 'hidden' }}>
-          <Terminal ref={terminalRef} onData={handleData} onResize={handleResize} />
         </div>
       )}
       {status === 'closed' && (

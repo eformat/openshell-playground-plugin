@@ -128,9 +128,8 @@ const SandboxTerminals: React.FC<SandboxTerminalsProps> = ({
               isActive={key === activeAgent}
               autoCommand={`NETNS=$(ls /var/run/netns/ 2>/dev/null | head -1)
 [ -z "$NETNS" ] && exec bash
-_COLS=$(tput cols 2>/dev/null || echo 80)
-_ROWS=$(tput lines 2>/dev/null || echo 24)
 cat > /tmp/.sandbox-env.sh << 'INITEOF'
+export HOME=/sandbox TERM=xterm-256color
 export HTTPS_PROXY=http://10.200.0.1:3128 HTTP_PROXY=http://10.200.0.1:3128
 export SSL_CERT_FILE=/etc/openshell-tls/ca-bundle.pem NODE_EXTRA_CA_CERTS=/etc/openshell-tls/openshell-ca.pem
 export CURL_CA_BUNDLE=/etc/openshell-tls/ca-bundle.pem REQUESTS_CA_BUNDLE=/etc/openshell-tls/ca-bundle.pem
@@ -138,6 +137,12 @@ export CODEX_CA_CERTIFICATE=/etc/openshell-tls/ca-bundle.pem GIT_SSL_CAINFO=/etc
 export ANTHROPIC_BASE_URL=https://inference.local ANTHROPIC_API_KEY=unused
 export OPENAI_BASE_URL=https://inference.local/v1 OPENAI_API_KEY=unused
 export CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1
+cd /sandbox
+set +m
+trap 'kill 0' EXIT
+if [ -f /sandbox/.local/share/opencode/opencode.db ]; then
+  python3 -c "import sqlite3;sqlite3.connect('/sandbox/.local/share/opencode/opencode.db').execute('select 1')" 2>/dev/null || { rm -f /sandbox/.local/share/opencode/opencode.db*; echo "reset corrupt opencode db"; }
+fi
 if [ -f /sandbox/opencode.json ]; then echo "opencode configured. Run: opencode (new) or opencode -c (resume)"; fi
 if [ ! -f /sandbox/opencode.json ] && command -v opencode >/dev/null 2>&1; then
   MODELS=$(curl -sk https://inference.local/v1/models 2>/dev/null | python3 -c "import sys,json;d=json.load(sys.stdin);[print(m['id']) for m in d.get('data',[])]" 2>/dev/null)
@@ -152,7 +157,7 @@ print('opencode.json configured:', ', '.join(ms))
   fi
 fi
 INITEOF
-exec nsenter --net=/var/run/netns/$NETNS -- env HOME=/sandbox TERM=xterm-256color COLUMNS=$_COLS LINES=$_ROWS bash --rcfile /tmp/.sandbox-env.sh`}
+exec nsenter --net=/var/run/netns/$NETNS bash --rcfile /tmp/.sandbox-env.sh`}
             />
           );
         })}
