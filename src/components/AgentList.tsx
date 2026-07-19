@@ -80,7 +80,8 @@ const AgentList: React.FC<AgentListProps> = ({
           <Thead>
             <Tr>
               <Th>Name</Th>
-              <Th>Type</Th>
+              <Th>Agent</Th>
+              <Th>Model</Th>
               <Th>Status</Th>
               <Th>Provider</Th>
               <Th>Age</Th>
@@ -91,8 +92,11 @@ const AgentList: React.FC<AgentListProps> = ({
             {agents.map((agent) => (
               <Tr key={agent.name}>
                 <Td dataLabel="Name">{agent.name}</Td>
-                <Td dataLabel="Type">
-                  <span style={{ textTransform: 'capitalize' }}>{agent.agentType}</span>
+                <Td dataLabel="Agent">
+                  <span style={{ textTransform: 'capitalize' }}>{agent.agentType || '—'}</span>
+                </Td>
+                <Td dataLabel="Model">
+                  <code style={{ fontSize: 11 }}>{(agent as any).model || '—'}</code>
                 </Td>
                 <Td dataLabel="Status">
                   {statusDot(agent.status)}

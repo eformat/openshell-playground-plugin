@@ -15,6 +15,13 @@ import (
 	"k8s.io/client-go/tools/remotecommand"
 )
 
+// execInNamedGateway targets a specific gateway pod by StatefulSet name (e.g. "openshell-claude-0")
+func execInNamedGateway(ctx context.Context, client kubernetes.Interface, config *rest.Config, namespace, gatewayName, command string) (string, error) {
+	podName := fmt.Sprintf("%s-0", gatewayName)
+	return execInPod(ctx, client, config, namespace, podName, "openshell-cli", command)
+}
+
+// execInGateway finds any openshell gateway pod in the namespace (legacy compatibility)
 func execInGateway(ctx context.Context, client kubernetes.Interface, config *rest.Config, namespace, command string) (string, error) {
 	ctx, cancel := context.WithTimeout(ctx, 120*time.Second)
 	defer cancel()
@@ -46,8 +53,10 @@ func execInGateway(ctx context.Context, client kubernetes.Interface, config *res
 		return "", fmt.Errorf("no openshell gateway pod found in namespace %s", namespace)
 	}
 
-	containerName := "openshell-cli"
+	return execInPod(ctx, client, config, namespace, gatewayPod, "openshell-cli", command)
+}
 
+func execInPod(ctx context.Context, client kubernetes.Interface, config *rest.Config, namespace, podName, containerName, command string) (string, error) {
 	if config == nil {
 		var cfgErr error
 		config, cfgErr = buildConfig()
@@ -60,7 +69,7 @@ func execInGateway(ctx context.Context, client kubernetes.Interface, config *res
 
 	req := client.CoreV1().RESTClient().Post().
 		Resource("pods").
-		Name(gatewayPod).
+		Name(podName).
 		Namespace(namespace).
 		SubResource("exec").
 		VersionedParams(&corev1.PodExecOptions{

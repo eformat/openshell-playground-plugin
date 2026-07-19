@@ -49,8 +49,20 @@ export async function listAgentTypes(): Promise<AgentTypeInfo[]> {
   return request<AgentTypeInfo[]>('/agent-types');
 }
 
-export async function listProviders(namespace: string): Promise<ProviderInfo[]> {
-  return request<ProviderInfo[]>(`/providers?ns=${encodeURIComponent(namespace)}`);
+export interface GatewayInfo {
+  name: string;
+  agentType: string;
+  status: string;
+}
+
+export async function listGateways(namespace: string): Promise<GatewayInfo[]> {
+  return request<GatewayInfo[]>(`/gateways?ns=${encodeURIComponent(namespace)}`);
+}
+
+export async function listProviders(namespace: string, gateway?: string): Promise<ProviderInfo[]> {
+  let url = `/providers?ns=${encodeURIComponent(namespace)}`;
+  if (gateway) url += `&gateway=${encodeURIComponent(gateway)}`;
+  return request<ProviderInfo[]>(url);
 }
 
 export async function createProvider(req: CreateProviderRequest): Promise<{ status: string; name: string }> {
@@ -60,10 +72,10 @@ export async function createProvider(req: CreateProviderRequest): Promise<{ stat
   });
 }
 
-export async function deleteProvider(name: string, namespace: string): Promise<void> {
-  await request(`/providers?ns=${encodeURIComponent(namespace)}&name=${encodeURIComponent(name)}`, {
-    method: 'DELETE',
-  });
+export async function deleteProvider(name: string, namespace: string, gateway?: string): Promise<void> {
+  let url = `/providers?ns=${encodeURIComponent(namespace)}&name=${encodeURIComponent(name)}`;
+  if (gateway) url += `&gateway=${encodeURIComponent(gateway)}`;
+  await request(url, { method: 'DELETE' });
 }
 
 export async function listWarmPools(namespace: string): Promise<WarmPoolInfo[]> {
@@ -95,9 +107,15 @@ export async function getGatewayPod(namespace: string): Promise<PodInfo> {
   return request<PodInfo>(`/gateway/pod?ns=${encodeURIComponent(namespace)}`);
 }
 
-export async function deployGateway(namespace: string): Promise<{ status: string }> {
+export async function deleteGateway(namespace: string, name: string): Promise<void> {
+  await request(`/gateway/delete?ns=${encodeURIComponent(namespace)}&name=${encodeURIComponent(name)}`, {
+    method: 'DELETE',
+  });
+}
+
+export async function deployGateway(namespace: string, agentType: string): Promise<{ status: string }> {
   return request('/gateway/deploy', {
     method: 'POST',
-    body: JSON.stringify({ namespace }),
+    body: JSON.stringify({ namespace, agentType }),
   });
 }

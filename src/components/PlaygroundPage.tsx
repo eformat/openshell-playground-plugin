@@ -12,13 +12,14 @@ import {
   Split,
   SplitItem,
 } from '@patternfly/react-core';
-import DeployPanel from './DeployPanel';
+import GatewayPanel from './GatewayPanel';
 import AgentList from './AgentList';
 import OpenshellTerm from './OpenshellTerm';
 import SandboxTerminals from './SandboxTerminals';
 import GatewaySetup from './GatewaySetup';
 import { AgentInfo, NamespaceInfo } from '../utils/types';
 import * as api from '../utils/api';
+import { GatewayInfo } from '../utils/api';
 import '../styles/openshell-plugin.css';
 
 interface AgentTerminal {
@@ -29,9 +30,7 @@ interface AgentTerminal {
 let useActiveNamespace: (() => [string, (ns: string) => void]) | undefined;
 try {
   useActiveNamespace = require('@openshift-console/dynamic-plugin-sdk').useActiveNamespace;
-} catch (_) {
-  // SDK hook not available in dev mode
-}
+} catch (_) {}
 
 const PlaygroundPage: React.FC = () => {
   const sdkNs = useActiveNamespace ? useActiveNamespace() : undefined;
@@ -41,8 +40,8 @@ const PlaygroundPage: React.FC = () => {
   const [agents, setAgents] = React.useState<AgentInfo[]>([]);
   const [loadingAgents, setLoadingAgents] = React.useState(false);
   const [agentError, setAgentError] = React.useState('');
-  const [gatewayExists, setGatewayExists] = React.useState<boolean | null>(null);
-  const [checkingGateway, setCheckingGateway] = React.useState(false);
+  const [gateways, setGateways] = React.useState<GatewayInfo[]>([]);
+  const [loadingGateways, setLoadingGateways] = React.useState(false);
   const [openTerminals, setOpenTerminals] = React.useState<AgentTerminal[]>([]);
   const [activeTerminal, setActiveTerminal] = React.useState('');
   const [splitPos, setSplitPos] = React.useState(50);
@@ -53,19 +52,34 @@ const PlaygroundPage: React.FC = () => {
   const namespace = rawNamespace && !rawNamespace.startsWith('#') ? rawNamespace : localNamespace;
   const setNamespace = sdkNs ? sdkNs[1] : setLocalNamespace;
 
-  const checkGateway = React.useCallback(async () => {
-    if (!namespace) {
-      setGatewayExists(null);
-      return;
-    }
-    setCheckingGateway(true);
+  const gwInitialDone = React.useRef(false);
+  const loadGateways = React.useCallback(async () => {
+    if (!namespace) { setGateways([]); return; }
+    if (!gwInitialDone.current) setLoadingGateways(true);
     try {
-      await api.getGatewayPod(namespace);
-      setGatewayExists(true);
+      const gws = await api.listGateways(namespace);
+      setGateways((prev) => JSON.stringify(prev) === JSON.stringify(gws) ? prev : gws);
     } catch {
-      setGatewayExists(false);
+      setGateways((prev) => prev.length === 0 ? prev : []);
     } finally {
-      setCheckingGateway(false);
+      setLoadingGateways(false);
+      gwInitialDone.current = true;
+    }
+  }, [namespace]);
+
+  const initialLoadDone = React.useRef(false);
+  const loadAgents = React.useCallback(async () => {
+    if (!namespace) return;
+    if (!initialLoadDone.current) setLoadingAgents(true);
+    try {
+      const a = await api.listAgents(namespace);
+      setAgents((prev) => JSON.stringify(prev) === JSON.stringify(a) ? prev : a);
+      setAgentError('');
+    } catch (err: any) {
+      setAgentError(err.message || 'Failed to load agents');
+    } finally {
+      setLoadingAgents(false);
+      initialLoadDone.current = true;
     }
   }, [namespace]);
 
@@ -77,10 +91,11 @@ const PlaygroundPage: React.FC = () => {
       setAgentError('');
       setOpenTerminals([]);
       setActiveTerminal('');
-      setGatewayExists(null);
+      setGateways([]);
     }
-    checkGateway();
-  }, [namespace, checkGateway]);
+    loadGateways();
+    if (namespace) loadAgents();
+  }, [namespace, loadGateways, loadAgents]);
 
   React.useEffect(() => {
     const loadNamespaces = (retries = 2) => {
@@ -91,33 +106,11 @@ const PlaygroundPage: React.FC = () => {
     loadNamespaces();
   }, []);
 
-  const loadAgents = React.useCallback(async () => {
-    if (!namespace) return;
-    setLoadingAgents(true);
-    setAgentError('');
-    try {
-      const a = await api.listAgents(namespace);
-      setAgents(a);
-    } catch (err: any) {
-      setAgentError(err.message || 'Failed to load agents');
-    } finally {
-      setLoadingAgents(false);
-    }
-  }, [namespace]);
-
-  React.useEffect(() => {
-    if (namespace) {
-      loadAgents();
-    } else {
-      setAgents([]);
-    }
-  }, [namespace, loadAgents]);
-
   React.useEffect(() => {
     if (!namespace) return;
-    const interval = setInterval(loadAgents, 10000);
+    const interval = setInterval(() => { loadAgents(); loadGateways(); }, 10000);
     return () => clearInterval(interval);
-  }, [namespace, loadAgents]);
+  }, [namespace, loadAgents, loadGateways]);
 
   const handleOpenTerminal = (name: string, ns: string) => {
     const key = `${ns}/${name}`;
@@ -142,18 +135,15 @@ const PlaygroundPage: React.FC = () => {
     e.preventDefault();
     const container = splitRef.current;
     if (!container) return;
-
     const handleMove = (ev: MouseEvent) => {
       const rect = container.getBoundingClientRect();
       const pct = ((ev.clientX - rect.left) / rect.width) * 100;
       setSplitPos(Math.max(20, Math.min(80, pct)));
     };
-
     const handleUp = () => {
       document.removeEventListener('mousemove', handleMove);
       document.removeEventListener('mouseup', handleUp);
     };
-
     document.addEventListener('mousemove', handleMove);
     document.addEventListener('mouseup', handleUp);
   }, []);
@@ -161,38 +151,23 @@ const PlaygroundPage: React.FC = () => {
   return (
     <div className="os-page">
       <div className="os-page__header">
-        <Title headingLevel="h1" size="2xl">
-          OpenShell Playground
-        </Title>
-        <p className="os-page__subtitle">
-          Deploy and interact with OpenShell agent sandboxes
-        </p>
+        <Title headingLevel="h1" size="2xl">OpenShell Playground</Title>
+        <p className="os-page__subtitle">Deploy and interact with OpenShell agent sandboxes</p>
       </div>
 
       <Toolbar>
         <ToolbarContent>
           <ToolbarItem>
-            <FormSelect
-              value={namespace}
-              onChange={(_e, val) => setNamespace(val)}
-              aria-label="Select namespace"
-              style={{ minWidth: 200 }}
-            >
+            <FormSelect value={namespace} onChange={(_e, val) => setNamespace(val)} aria-label="Select namespace" style={{ minWidth: 200 }}>
               <FormSelectOption value="" label="-- Select namespace --" isDisabled />
               {namespaces.map((ns) => (
                 <FormSelectOption key={ns.name} value={ns.name} label={ns.name} />
               ))}
             </FormSelect>
           </ToolbarItem>
-          {namespace && (
-            <ToolbarItem>
-              <Label color="blue">{namespace}</Label>
-            </ToolbarItem>
-          )}
+          {namespace && <ToolbarItem><Label color="blue">{namespace}</Label></ToolbarItem>}
           <ToolbarItem>
-            <Button variant="secondary" onClick={loadAgents} isDisabled={!namespace}>
-              Refresh
-            </Button>
+            <Button variant="secondary" onClick={() => { loadAgents(); loadGateways(); }} isDisabled={!namespace}>Refresh</Button>
           </ToolbarItem>
         </ToolbarContent>
       </Toolbar>
@@ -201,22 +176,25 @@ const PlaygroundPage: React.FC = () => {
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
           <p>Select a namespace to get started.</p>
         </div>
-      ) : checkingGateway ? (
+      ) : loadingGateways ? (
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
           <Spinner size="xl" />
         </div>
-      ) : gatewayExists === false ? (
-        <GatewaySetup namespace={namespace} onDeployed={checkGateway} />
+      ) : gateways.length === 0 ? (
+        <GatewaySetup namespace={namespace} onDeployed={loadGateways} />
       ) : (
         <>
           <Split hasGutter className="os-top-row">
             <SplitItem className="os-top-row__deploy">
-              <DeployPanel key={namespace || '__none__'} namespace={namespace} onDeployed={loadAgents} />
+              <GatewayPanel
+                namespace={namespace}
+                gateways={gateways}
+                onDeployed={loadAgents}
+                onGatewaysChanged={loadGateways}
+              />
             </SplitItem>
             <SplitItem isFilled className="os-top-row__agents">
-              <Title headingLevel="h3" size="lg" style={{ marginBottom: 16 }}>
-                Agent List
-              </Title>
+              <Title headingLevel="h3" size="lg" style={{ marginBottom: 16 }}>Agent List</Title>
               <AgentList
                 namespace={namespace}
                 agents={agents}
@@ -230,7 +208,7 @@ const PlaygroundPage: React.FC = () => {
 
           <div className="os-terminal-split" ref={splitRef}>
             <div className="os-terminal-split__left" style={{ width: `${splitPos}%` }}>
-              <OpenshellTerm key={`term-${namespace}`} namespace={namespace} />
+              <OpenshellTerm namespace={namespace} gateways={gateways} />
             </div>
             <div className="os-terminal-split__divider" onMouseDown={handleDividerDrag} />
             <div className="os-terminal-split__right" style={{ width: `${100 - splitPos}%` }}>

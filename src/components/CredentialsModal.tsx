@@ -18,6 +18,7 @@ import * as api from '../utils/api';
 interface CredentialsModalProps {
   isOpen: boolean;
   namespace: string;
+  gateway?: string;
   onClose: () => void;
   onCreated: (providerName: string) => void;
 }
@@ -25,6 +26,7 @@ interface CredentialsModalProps {
 const CredentialsModal: React.FC<CredentialsModalProps> = ({
   isOpen,
   namespace,
+  gateway,
   onClose,
   onCreated,
 }) => {
@@ -78,6 +80,7 @@ const CredentialsModal: React.FC<CredentialsModalProps> = ({
       await api.createProvider({
         name: providerName.trim(),
         type: providerType,
+        gateway,
         credentials,
         namespace,
       });

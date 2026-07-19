@@ -126,7 +126,7 @@ const SandboxTerminals: React.FC<SandboxTerminalsProps> = ({
               containerName={pod.containerName}
               namespace={agent.namespace}
               isActive={key === activeAgent}
-              autoCommand={'NETNS=$(ls /var/run/netns/ 2>/dev/null | head -1); if [ -n "$NETNS" ]; then exec nsenter --net=/var/run/netns/$NETNS -- env HTTPS_PROXY=http://10.200.0.1:3128 HTTP_PROXY=http://10.200.0.1:3128 ANTHROPIC_BASE_URL=https://inference.local ANTHROPIC_API_KEY=unused NODE_TLS_REJECT_UNAUTHORIZED=0 CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 TERM=xterm-256color HOME=/sandbox bash; fi'}
+              autoCommand={'NETNS=$(ls /var/run/netns/ 2>/dev/null | head -1); if [ -n "$NETNS" ]; then exec nsenter --net=/var/run/netns/$NETNS -- env HTTPS_PROXY=http://10.200.0.1:3128 HTTP_PROXY=http://10.200.0.1:3128 SSL_CERT_FILE=/etc/openshell-tls/ca-bundle.pem NODE_EXTRA_CA_CERTS=/etc/openshell-tls/openshell-ca.pem CURL_CA_BUNDLE=/etc/openshell-tls/ca-bundle.pem REQUESTS_CA_BUNDLE=/etc/openshell-tls/ca-bundle.pem CODEX_CA_CERTIFICATE=/etc/openshell-tls/ca-bundle.pem GIT_SSL_CAINFO=/etc/openshell-tls/ca-bundle.pem ANTHROPIC_BASE_URL=https://inference.local ANTHROPIC_API_KEY=unused OPENAI_BASE_URL=https://inference.local/v1 OPENAI_API_KEY=unused CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 TERM=xterm-256color HOME=/sandbox bash; fi'}
             />
           );
         })}

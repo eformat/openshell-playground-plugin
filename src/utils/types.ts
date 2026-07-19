@@ -4,6 +4,7 @@ export interface AgentTypeInfo {
   description: string;
   image: string;
   sandbox: string;
+  models: { id: string; label: string }[];
 }
 
 export interface ProviderInfo {
@@ -42,7 +43,9 @@ export interface PodInfo {
 
 export interface DeployRequest {
   namespace: string;
+  gateway: string;
   agentType: string;
+  agentLabel: string;
   provider: string;
   newProvider?: CreateProviderRequest;
   warmPool: string;
@@ -59,6 +62,7 @@ export interface DeployResponse {
 export interface CreateProviderRequest {
   name: string;
   type: string;
+  gateway?: string;
   credentials: Record<string, string>;
   namespace: string;
 }
@@ -77,6 +81,15 @@ export const AGENT_TYPES: AgentTypeInfo[] = [
     description: 'Anthropic Claude coding agent — works out of the box with ANTHROPIC_API_KEY or Vertex AI provider',
     image: 'base',
     sandbox: 'base',
+    models: [
+      { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6 (1M)' },
+      { id: 'claude-sonnet-5', label: 'Sonnet 5 (1M)' },
+      { id: 'claude-opus-4-6', label: 'Opus 4.6 (1M)' },
+      { id: 'claude-opus-4-7', label: 'Opus 4.7 (1M)' },
+      { id: 'claude-opus-4-8', label: 'Opus 4.8 (1M)' },
+      { id: 'claude-fable-5', label: 'Fable 5 (1M)' },
+      { id: 'claude-haiku-4-5-20251001', label: 'Haiku 4.5 (200k)' },
+    ],
   },
   {
     name: 'codex',
@@ -84,6 +97,13 @@ export const AGENT_TYPES: AgentTypeInfo[] = [
     description: 'OpenAI Codex coding agent — requires OPENAI_API_KEY',
     image: 'base',
     sandbox: 'base',
+    models: [
+      { id: 'gpt-5.3-codex', label: 'GPT-5.3 Codex' },
+      { id: 'gpt-5.4-codex', label: 'GPT-5.4 Codex' },
+      { id: 'o3', label: 'o3' },
+      { id: 'o4-mini', label: 'o4-mini' },
+      { id: 'gpt-4.1', label: 'GPT-4.1' },
+    ],
   },
   {
     name: 'opencode',
@@ -91,6 +111,11 @@ export const AGENT_TYPES: AgentTypeInfo[] = [
     description: 'Open-source coding agent — use with a configured provider',
     image: 'base',
     sandbox: 'base',
+    models: [
+      { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
+      { id: 'claude-opus-4-7', label: 'Opus 4.7' },
+      { id: 'gpt-4.1', label: 'GPT-4.1' },
+    ],
   },
   {
     name: 'copilot',
@@ -98,6 +123,9 @@ export const AGENT_TYPES: AgentTypeInfo[] = [
     description: 'GitHub Copilot in the CLI — requires GITHUB_TOKEN',
     image: 'base',
     sandbox: 'base',
+    models: [
+      { id: 'default', label: 'Default' },
+    ],
   },
   {
     name: 'ollama',
@@ -105,6 +133,9 @@ export const AGENT_TYPES: AgentTypeInfo[] = [
     description: 'Run cloud and local models — includes Claude Code, Codex, and OpenCode',
     image: 'ollama',
     sandbox: 'ollama',
+    models: [
+      { id: 'default', label: 'Default' },
+    ],
   },
   {
     name: 'pi',
@@ -112,6 +143,9 @@ export const AGENT_TYPES: AgentTypeInfo[] = [
     description: 'Pi coding agent pre-installed',
     image: 'pi',
     sandbox: 'pi',
+    models: [
+      { id: 'default', label: 'Default' },
+    ],
   },
   {
     name: 'hermes',
@@ -119,5 +153,8 @@ export const AGENT_TYPES: AgentTypeInfo[] = [
     description: 'NousResearch Hermes agentic framework with MCP tool integration',
     image: 'hermes',
     sandbox: 'base',
+    models: [
+      { id: 'default', label: 'Default' },
+    ],
   },
 ];
