@@ -7,6 +7,7 @@ import * as api from '../utils/api';
 interface AgentTerminal {
   name: string;
   namespace: string;
+  agentType: string;
 }
 
 interface SandboxTerminalsProps {
@@ -20,6 +21,74 @@ interface SandboxTerminalsProps {
 
 function agentKey(a: AgentTerminal): string {
   return `${a.namespace}/${a.name}`;
+}
+
+const BASE_ENV = `export HOME=/sandbox TERM=xterm-256color
+export HTTPS_PROXY=http://10.200.0.1:3128 HTTP_PROXY=http://10.200.0.1:3128
+export SSL_CERT_FILE=/etc/openshell-tls/ca-bundle.pem NODE_EXTRA_CA_CERTS=/etc/openshell-tls/openshell-ca.pem
+export CURL_CA_BUNDLE=/etc/openshell-tls/ca-bundle.pem REQUESTS_CA_BUNDLE=/etc/openshell-tls/ca-bundle.pem
+export CODEX_CA_CERTIFICATE=/etc/openshell-tls/ca-bundle.pem GIT_SSL_CAINFO=/etc/openshell-tls/ca-bundle.pem
+export ANTHROPIC_BASE_URL=https://inference.local ANTHROPIC_API_KEY=unused
+export OPENAI_BASE_URL=https://inference.local/v1 OPENAI_API_KEY=unused
+export CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1
+cd /sandbox
+set +m
+trap 'kill 0' EXIT`;
+
+const CLAUDE_SETUP = `echo "Claude Code ready. Run: claude"`;
+
+const CODEX_SETUP = `mkdir -p /sandbox/.codex
+if [ ! -f /sandbox/.codex/config.toml ]; then
+  cat > /sandbox/.codex/config.toml << 'CODEXCFG'
+model_provider = "openshell"
+
+[model_providers.openshell]
+name = "OpenShell Inference"
+base_url = "https://inference.local/v1"
+env_key = "OPENAI_API_KEY"
+supports_websockets = false
+CODEXCFG
+fi
+export CODEX_HOME=/sandbox/.codex
+echo "Codex ready. Run: codex"`;
+
+
+const OPENCODE_SETUP = `if [ -f /sandbox/.local/share/opencode/opencode.db ]; then
+  python3 -c "import sqlite3;sqlite3.connect('/sandbox/.local/share/opencode/opencode.db').execute('select 1')" 2>/dev/null || { rm -f /sandbox/.local/share/opencode/opencode.db*; echo "reset corrupt opencode db"; }
+fi
+if [ -f /sandbox/opencode.json ]; then echo "OpenCode ready. Run: opencode (new) or opencode -c (resume)"; fi
+if [ ! -f /sandbox/opencode.json ] && command -v opencode >/dev/null 2>&1; then
+  MODELS=$(curl -sk https://inference.local/v1/models 2>/dev/null | python3 -c "import sys,json;d=json.load(sys.stdin);[print(m['id']) for m in d.get('data',[])]" 2>/dev/null)
+  if [ -n "$MODELS" ]; then
+    python3 -c "
+import json,sys
+ms = [l.strip() for l in sys.stdin if l.strip()]
+cfg = {'provider':{'openai-compatible':{'npm':'@ai-sdk/openai-compatible','options':{'baseURL':'https://inference.local/v1','apiKey':'unused'},'models':{m:{'name':m} for m in ms}}}}
+json.dump(cfg, open('/sandbox/opencode.json','w'), indent=2)
+print('opencode.json configured:', ', '.join(ms))
+" <<< "$MODELS"
+  fi
+fi`;
+
+const DEFAULT_SETUP = `echo "Sandbox ready."`;
+
+function agentSetup(agentType: string): string {
+  switch (agentType) {
+    case 'claude': return CLAUDE_SETUP;
+    case 'codex': return CODEX_SETUP;
+    case 'opencode': return OPENCODE_SETUP;
+    default: return DEFAULT_SETUP;
+  }
+}
+
+function buildAutoCommand(agentType: string): string {
+  return `NETNS=$(ls /var/run/netns/ 2>/dev/null | head -1)
+[ -z "$NETNS" ] && exec bash
+cat > /tmp/.sandbox-env.sh << 'INITEOF'
+${BASE_ENV}
+${agentSetup(agentType)}
+INITEOF
+exec nsenter --net=/var/run/netns/$NETNS bash --rcfile /tmp/.sandbox-env.sh`;
 }
 
 const SandboxTerminals: React.FC<SandboxTerminalsProps> = ({
@@ -126,38 +195,7 @@ const SandboxTerminals: React.FC<SandboxTerminalsProps> = ({
               containerName={pod.containerName}
               namespace={agent.namespace}
               isActive={key === activeAgent}
-              autoCommand={`NETNS=$(ls /var/run/netns/ 2>/dev/null | head -1)
-[ -z "$NETNS" ] && exec bash
-cat > /tmp/.sandbox-env.sh << 'INITEOF'
-export HOME=/sandbox TERM=xterm-256color
-export HTTPS_PROXY=http://10.200.0.1:3128 HTTP_PROXY=http://10.200.0.1:3128
-export SSL_CERT_FILE=/etc/openshell-tls/ca-bundle.pem NODE_EXTRA_CA_CERTS=/etc/openshell-tls/openshell-ca.pem
-export CURL_CA_BUNDLE=/etc/openshell-tls/ca-bundle.pem REQUESTS_CA_BUNDLE=/etc/openshell-tls/ca-bundle.pem
-export CODEX_CA_CERTIFICATE=/etc/openshell-tls/ca-bundle.pem GIT_SSL_CAINFO=/etc/openshell-tls/ca-bundle.pem
-export ANTHROPIC_BASE_URL=https://inference.local ANTHROPIC_API_KEY=unused
-export OPENAI_BASE_URL=https://inference.local/v1 OPENAI_API_KEY=unused
-export CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1
-cd /sandbox
-set +m
-trap 'kill 0' EXIT
-if [ -f /sandbox/.local/share/opencode/opencode.db ]; then
-  python3 -c "import sqlite3;sqlite3.connect('/sandbox/.local/share/opencode/opencode.db').execute('select 1')" 2>/dev/null || { rm -f /sandbox/.local/share/opencode/opencode.db*; echo "reset corrupt opencode db"; }
-fi
-if [ -f /sandbox/opencode.json ]; then echo "opencode configured. Run: opencode (new) or opencode -c (resume)"; fi
-if [ ! -f /sandbox/opencode.json ] && command -v opencode >/dev/null 2>&1; then
-  MODELS=$(curl -sk https://inference.local/v1/models 2>/dev/null | python3 -c "import sys,json;d=json.load(sys.stdin);[print(m['id']) for m in d.get('data',[])]" 2>/dev/null)
-  if [ -n "$MODELS" ]; then
-    python3 -c "
-import json,sys
-ms = [l.strip() for l in sys.stdin if l.strip()]
-cfg = {'provider':{'openai-compatible':{'npm':'@ai-sdk/openai-compatible','options':{'baseURL':'https://inference.local/v1','apiKey':'unused'},'models':{m:{'name':m} for m in ms}}}}
-json.dump(cfg, open('/sandbox/opencode.json','w'), indent=2)
-print('opencode.json configured:', ', '.join(ms))
-" <<< "$MODELS"
-  fi
-fi
-INITEOF
-exec nsenter --net=/var/run/netns/$NETNS bash --rcfile /tmp/.sandbox-env.sh`}
+              autoCommand={buildAutoCommand(agent.agentType)}
             />
           );
         })}

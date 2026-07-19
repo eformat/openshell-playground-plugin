@@ -98,7 +98,7 @@ export const AGENT_TYPES: AgentTypeInfo[] = [
     sandbox: 'base',
     models: [
       { id: 'gpt-5.3-codex', label: 'GPT-5.3 Codex' },
-      { id: 'gpt-5.4-codex', label: 'GPT-5.4 Codex' },
+      { id: 'gpt-5.4', label: 'GPT-5.4' },
       { id: 'o3', label: 'o3' },
       { id: 'o4-mini', label: 'o4-mini' },
       { id: 'gpt-4.1', label: 'GPT-4.1' },

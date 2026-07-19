@@ -25,6 +25,7 @@ import '../styles/openshell-plugin.css';
 interface AgentTerminal {
   name: string;
   namespace: string;
+  agentType: string;
 }
 
 let useActiveNamespace: (() => [string, (ns: string) => void]) | undefined;
@@ -112,10 +113,11 @@ const PlaygroundPage: React.FC = () => {
     return () => clearInterval(interval);
   }, [namespace, loadAgents, loadGateways]);
 
-  const handleOpenTerminal = (name: string, ns: string) => {
+  const handleOpenTerminal = (name: string, ns: string, agentType?: string) => {
     const key = `${ns}/${name}`;
+    const type = agentType || agents.find((a) => a.name === name && a.namespace === ns)?.agentType || '';
     setOpenTerminals((prev) =>
-      prev.some((t) => `${t.namespace}/${t.name}` === key) ? prev : [...prev, { name, namespace: ns }],
+      prev.some((t) => `${t.namespace}/${t.name}` === key) ? prev : [...prev, { name, namespace: ns, agentType: type }],
     );
     setActiveTerminal(key);
   };

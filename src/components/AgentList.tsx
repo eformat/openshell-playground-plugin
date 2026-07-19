@@ -22,7 +22,7 @@ interface AgentListProps {
   agents: AgentInfo[];
   loading: boolean;
   error: string;
-  onOpenTerminal: (name: string, namespace: string) => void;
+  onOpenTerminal: (name: string, namespace: string, agentType?: string) => void;
   onRefresh: () => void;
 }
 
@@ -109,7 +109,7 @@ const AgentList: React.FC<AgentListProps> = ({
                     variant="secondary"
                     size="sm"
                     isDisabled={agent.status !== 'Running'}
-                    onClick={() => onOpenTerminal(agent.name, agent.namespace)}
+                    onClick={() => onOpenTerminal(agent.name, agent.namespace, agent.agentType)}
                     style={{ marginRight: 8 }}
                   >
                     Terminal
