@@ -107,6 +107,10 @@ export async function getGatewayPod(namespace: string): Promise<PodInfo> {
   return request<PodInfo>(`/gateway/pod?ns=${encodeURIComponent(namespace)}`);
 }
 
+export async function getInferenceConfig(namespace: string, gateway: string): Promise<{ provider: string; model: string }> {
+  return request(`/inference?ns=${encodeURIComponent(namespace)}&gateway=${encodeURIComponent(gateway)}`);
+}
+
 export async function deleteGateway(namespace: string, name: string): Promise<void> {
   await request(`/gateway/delete?ns=${encodeURIComponent(namespace)}&name=${encodeURIComponent(name)}`, {
     method: 'DELETE',

@@ -107,6 +107,7 @@ func main() {
 	mux.HandleFunc("/api/agents", s.handleAgents)
 	mux.HandleFunc("/api/agents/", s.handleAgentActions)
 	mux.HandleFunc("/api/deploy", s.handleDeploy)
+	mux.HandleFunc("/api/inference", s.handleInference)
 	mux.HandleFunc("/api/gateway/pod", s.handleGatewayPod)
 	mux.HandleFunc("/api/gateway/deploy", s.handleGatewayDeploy)
 	mux.HandleFunc("/api/gateway/delete", s.handleGatewayDelete)

@@ -126,7 +126,33 @@ const SandboxTerminals: React.FC<SandboxTerminalsProps> = ({
               containerName={pod.containerName}
               namespace={agent.namespace}
               isActive={key === activeAgent}
-              autoCommand={'NETNS=$(ls /var/run/netns/ 2>/dev/null | head -1); if [ -n "$NETNS" ]; then exec nsenter --net=/var/run/netns/$NETNS -- env HTTPS_PROXY=http://10.200.0.1:3128 HTTP_PROXY=http://10.200.0.1:3128 SSL_CERT_FILE=/etc/openshell-tls/ca-bundle.pem NODE_EXTRA_CA_CERTS=/etc/openshell-tls/openshell-ca.pem CURL_CA_BUNDLE=/etc/openshell-tls/ca-bundle.pem REQUESTS_CA_BUNDLE=/etc/openshell-tls/ca-bundle.pem CODEX_CA_CERTIFICATE=/etc/openshell-tls/ca-bundle.pem GIT_SSL_CAINFO=/etc/openshell-tls/ca-bundle.pem ANTHROPIC_BASE_URL=https://inference.local ANTHROPIC_API_KEY=unused OPENAI_BASE_URL=https://inference.local/v1 OPENAI_API_KEY=unused CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1 TERM=xterm-256color HOME=/sandbox bash; fi'}
+              autoCommand={`NETNS=$(ls /var/run/netns/ 2>/dev/null | head -1)
+[ -z "$NETNS" ] && exec bash
+_COLS=$(tput cols 2>/dev/null || echo 80)
+_ROWS=$(tput lines 2>/dev/null || echo 24)
+cat > /tmp/.sandbox-env.sh << 'INITEOF'
+export HTTPS_PROXY=http://10.200.0.1:3128 HTTP_PROXY=http://10.200.0.1:3128
+export SSL_CERT_FILE=/etc/openshell-tls/ca-bundle.pem NODE_EXTRA_CA_CERTS=/etc/openshell-tls/openshell-ca.pem
+export CURL_CA_BUNDLE=/etc/openshell-tls/ca-bundle.pem REQUESTS_CA_BUNDLE=/etc/openshell-tls/ca-bundle.pem
+export CODEX_CA_CERTIFICATE=/etc/openshell-tls/ca-bundle.pem GIT_SSL_CAINFO=/etc/openshell-tls/ca-bundle.pem
+export ANTHROPIC_BASE_URL=https://inference.local ANTHROPIC_API_KEY=unused
+export OPENAI_BASE_URL=https://inference.local/v1 OPENAI_API_KEY=unused
+export CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1
+if [ -f /sandbox/opencode.json ]; then echo "opencode configured. Run: opencode (new) or opencode -c (resume)"; fi
+if [ ! -f /sandbox/opencode.json ] && command -v opencode >/dev/null 2>&1; then
+  MODELS=$(curl -sk https://inference.local/v1/models 2>/dev/null | python3 -c "import sys,json;d=json.load(sys.stdin);[print(m['id']) for m in d.get('data',[])]" 2>/dev/null)
+  if [ -n "$MODELS" ]; then
+    python3 -c "
+import json,sys
+ms = [l.strip() for l in sys.stdin if l.strip()]
+cfg = {'provider':{'openai-compatible':{'npm':'@ai-sdk/openai-compatible','options':{'baseURL':'https://inference.local/v1','apiKey':'unused'},'models':{m:{'name':m} for m in ms}}}}
+json.dump(cfg, open('/sandbox/opencode.json','w'), indent=2)
+print('opencode.json configured:', ', '.join(ms))
+" <<< "$MODELS"
+  fi
+fi
+INITEOF
+exec nsenter --net=/var/run/netns/$NETNS -- env HOME=/sandbox TERM=xterm-256color COLUMNS=$_COLS LINES=$_ROWS bash --rcfile /tmp/.sandbox-env.sh`}
             />
           );
         })}

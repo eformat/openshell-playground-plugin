@@ -46,7 +46,7 @@ const GatewayPanel: React.FC<GatewayPanelProps> = ({ namespace, gateways, onDepl
     }
   }, [gateways, selectedGateway]);
 
-  // Load providers when gateway changes
+  // Load providers and inference config when gateway changes
   React.useEffect(() => {
     if (!namespace || !selectedGateway) return;
     api.listProviders(namespace, selectedGateway).then((p) => {
@@ -55,9 +55,15 @@ const GatewayPanel: React.FC<GatewayPanelProps> = ({ namespace, gateways, onDepl
       else setProvider('');
     }).catch(() => setProviders([]));
 
-    if (agentInfo && agentInfo.models.length > 0) {
-      setModel(agentInfo.models[0].id);
-    }
+    // Load actual inference model from gateway
+    api.getInferenceConfig(namespace, selectedGateway).then((cfg) => {
+      if (cfg.model) setModel(cfg.model);
+      if (cfg.provider && !provider) setProvider(cfg.provider);
+    }).catch(() => {
+      if (agentInfo && agentInfo.models.length > 0) {
+        setModel(agentInfo.models[0].id);
+      }
+    });
   }, [namespace, selectedGateway]);
 
   const handleDeleteGateway = async (gwName: string) => {

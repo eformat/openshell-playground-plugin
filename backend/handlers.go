@@ -505,6 +505,36 @@ func (s *server) handleAgents(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, result)
 }
 
+func (s *server) handleInference(w http.ResponseWriter, r *http.Request) {
+	ns := r.URL.Query().Get("ns")
+	gw := r.URL.Query().Get("gateway")
+	if ns == "" {
+		writeError(w, 400, "namespace required")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
+	defer cancel()
+
+	provider := ""
+	model := ""
+	if out, err := s.execOnGateway(ctx, ns, gw, "openshell inference get"); err == nil {
+		for _, line := range strings.Split(out, "\n") {
+			cleaned := strings.ReplaceAll(line, "\x1b[2m", "")
+			cleaned = strings.ReplaceAll(cleaned, "\x1b[0m", "")
+			cleaned = strings.TrimSpace(cleaned)
+			if strings.HasPrefix(cleaned, "Provider:") {
+				provider = strings.TrimSpace(strings.TrimPrefix(cleaned, "Provider:"))
+			}
+			if strings.HasPrefix(cleaned, "Model:") {
+				model = strings.TrimSpace(strings.TrimPrefix(cleaned, "Model:"))
+			}
+		}
+	}
+
+	writeJSON(w, map[string]string{"provider": provider, "model": model})
+}
+
 func (s *server) handleAgentActions(w http.ResponseWriter, r *http.Request) {
 	path := r.URL.Path
 	ns := r.URL.Query().Get("ns")

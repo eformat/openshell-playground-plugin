@@ -70,8 +70,7 @@ export interface CreateProviderRequest {
 export const PROVIDER_TYPES = [
   { id: 'google-vertex-ai', name: 'Google Vertex AI' },
   { id: 'anthropic', name: 'Anthropic' },
-  { id: 'openai', name: 'OpenAI' },
-  { id: 'custom', name: 'Custom' },
+  { id: 'openai', name: 'OpenAI / OpenAI-Compatible' },
 ] as const;
 
 export const AGENT_TYPES: AgentTypeInfo[] = [

@@ -101,8 +101,10 @@ const TerminalSession: React.FC<TerminalSessionProps> = ({
   }, [podName, containerName, namespace, autoCommand]);
 
   React.useEffect(() => {
-    connect();
+    // Delay connect to let FitAddon resize xterm to container width
+    const timer = setTimeout(connect, 200);
     return () => {
+      clearTimeout(timer);
       connectRef.current++;
       if (wsRef.current) {
         if (wsRef.current.readyState === WebSocket.OPEN) {
