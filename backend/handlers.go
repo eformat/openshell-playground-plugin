@@ -344,38 +344,22 @@ func (s *server) handleProviders(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		// Write credentials to a temp file to avoid exposing them in /proc/*/cmdline
-		var credParts []string
-		var configParts []string
+		args := fmt.Sprintf("openshell provider create --name %s --type %s", req.Name, req.Type)
+		hasCredential := false
 		for k, v := range req.Credentials {
 			escaped := strings.ReplaceAll(v, "'", "'\\''")
 			if configKeys[k] {
-				configParts = append(configParts, fmt.Sprintf("--config %s='%s'", k, escaped))
+				args += fmt.Sprintf(" --config %s='%s'", k, escaped)
 			} else {
-				credParts = append(credParts, fmt.Sprintf("%s=%s", k, v))
+				args += fmt.Sprintf(" --credential %s='%s'", k, escaped)
+				hasCredential = true
 			}
 		}
-		if len(credParts) > 0 {
-			// Write creds to temp file, source them via env, clean up
-			credContent := strings.Join(credParts, "\n")
-			credEscaped := strings.ReplaceAll(credContent, "'", "'\\''")
-			writeCmd := "cat > /tmp/.provider-creds << 'CREDEOF'\n" + credEscaped + "\nCREDEOF"
-			s.execOnGateway(r.Context(), req.Namespace, req.Gateway, writeCmd)
-		}
-		args := fmt.Sprintf("openshell provider create --name %s --type %s", req.Name, req.Type)
-		if len(credParts) > 0 {
-			args += " --credential-file /tmp/.provider-creds"
-		}
-		for _, cp := range configParts {
-			args += " " + cp
-		}
-		if len(credParts) == 0 && len(configParts) == 0 {
+		if !hasCredential {
 			args += " --from-gcloud-adc"
 		}
 
 		_, err := s.execOnGateway(r.Context(), req.Namespace, req.Gateway, args)
-		// Clean up creds file
-		s.execOnGateway(r.Context(), req.Namespace, req.Gateway, "rm -f /tmp/.provider-creds")
 		if err != nil {
 			writeError(w, 500, fmt.Sprintf("failed to create provider: %v", err))
 			return
