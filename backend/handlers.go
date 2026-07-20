@@ -10,6 +10,8 @@ import (
 	"strings"
 	"time"
 
+	authenticationv1 "k8s.io/api/authentication/v1"
+	authorizationv1 "k8s.io/api/authorization/v1"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
@@ -63,15 +65,40 @@ func (s *server) userClients(r *http.Request) (kubernetes.Interface, dynamic.Int
 }
 
 func (s *server) authorizeNamespace(r *http.Request, namespace string) error {
-	userClient, _, err := s.userClients(r)
-	if err != nil {
+	token := r.Header.Get("Authorization")
+	if strings.HasPrefix(token, "Bearer ") {
+		token = token[7:]
+	}
+	if token == "" {
 		return fmt.Errorf("unauthorized")
 	}
+
 	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 	defer cancel()
-	_, err = userClient.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{Limit: 1})
-	if err != nil {
-		return fmt.Errorf("access denied to namespace %s", namespace)
+
+	// TokenReview: validate token and get username/groups
+	tr, err := s.client.AuthenticationV1().TokenReviews().Create(ctx, &authenticationv1.TokenReview{
+		Spec: authenticationv1.TokenReviewSpec{Token: token},
+	}, metav1.CreateOptions{})
+	if err != nil || !tr.Status.Authenticated {
+		return fmt.Errorf("unauthorized")
+	}
+
+	// SubjectAccessReview: check if user can create pods in this namespace (implies edit/admin)
+	sar, err := s.client.AuthorizationV1().SubjectAccessReviews().Create(ctx, &authorizationv1.SubjectAccessReview{
+		Spec: authorizationv1.SubjectAccessReviewSpec{
+			User:   tr.Status.User.Username,
+			Groups: tr.Status.User.Groups,
+			ResourceAttributes: &authorizationv1.ResourceAttributes{
+				Namespace: namespace,
+				Verb:      "create",
+				Group:     "",
+				Resource:  "pods",
+			},
+		},
+	}, metav1.CreateOptions{})
+	if err != nil || !sar.Status.Allowed {
+		return fmt.Errorf("access denied: user %s cannot create resources in namespace %s", tr.Status.User.Username, namespace)
 	}
 	return nil
 }
@@ -317,22 +344,38 @@ func (s *server) handleProviders(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		args := fmt.Sprintf("openshell provider create --name %s --type %s", req.Name, req.Type)
-		hasCredential := false
+		// Write credentials to a temp file to avoid exposing them in /proc/*/cmdline
+		var credParts []string
+		var configParts []string
 		for k, v := range req.Credentials {
 			escaped := strings.ReplaceAll(v, "'", "'\\''")
 			if configKeys[k] {
-				args += fmt.Sprintf(" --config %s='%s'", k, escaped)
+				configParts = append(configParts, fmt.Sprintf("--config %s='%s'", k, escaped))
 			} else {
-				args += fmt.Sprintf(" --credential %s='%s'", k, escaped)
-				hasCredential = true
+				credParts = append(credParts, fmt.Sprintf("%s=%s", k, v))
 			}
 		}
-		if !hasCredential {
+		if len(credParts) > 0 {
+			// Write creds to temp file, source them via env, clean up
+			credContent := strings.Join(credParts, "\n")
+			credEscaped := strings.ReplaceAll(credContent, "'", "'\\''")
+			writeCmd := "cat > /tmp/.provider-creds << 'CREDEOF'\n" + credEscaped + "\nCREDEOF"
+			s.execOnGateway(r.Context(), req.Namespace, req.Gateway, writeCmd)
+		}
+		args := fmt.Sprintf("openshell provider create --name %s --type %s", req.Name, req.Type)
+		if len(credParts) > 0 {
+			args += " --credential-file /tmp/.provider-creds"
+		}
+		for _, cp := range configParts {
+			args += " " + cp
+		}
+		if len(credParts) == 0 && len(configParts) == 0 {
 			args += " --from-gcloud-adc"
 		}
 
 		_, err := s.execOnGateway(r.Context(), req.Namespace, req.Gateway, args)
+		// Clean up creds file
+		s.execOnGateway(r.Context(), req.Namespace, req.Gateway, "rm -f /tmp/.provider-creds")
 		if err != nil {
 			writeError(w, 500, fmt.Sprintf("failed to create provider: %v", err))
 			return
