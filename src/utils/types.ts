@@ -129,21 +129,25 @@ export const AGENT_TYPES: AgentTypeInfo[] = [
   {
     name: 'ollama',
     displayName: 'Ollama',
-    description: 'Run cloud and local models — includes Claude Code, Codex, and OpenCode',
+    description: 'Bundled Ollama server with Claude Code and Codex pre-installed. Pull and run models locally',
     image: 'ollama',
     sandbox: 'ollama',
     models: [
-      { id: 'default', label: 'Default' },
+      { id: 'qwen3:8b', label: 'Qwen 3 8B' },
+      { id: 'llama3.3:70b', label: 'Llama 3.3 70B' },
+      { id: 'deepseek-r1:14b', label: 'DeepSeek R1 14B' },
+      { id: 'codestral:22b', label: 'Codestral 22B' },
     ],
   },
   {
     name: 'pi',
     displayName: 'Pi',
-    description: 'Pi coding agent pre-installed',
+    description: 'Minimal terminal coding harness — lightweight agent on the base sandbox',
     image: 'pi',
     sandbox: 'pi',
     models: [
-      { id: 'default', label: 'Default' },
+      { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
+      { id: 'gpt-5.4', label: 'GPT-5.4' },
     ],
   },
   {
@@ -151,9 +155,10 @@ export const AGENT_TYPES: AgentTypeInfo[] = [
     displayName: 'Hermes Agent',
     description: 'NousResearch Hermes agentic framework with MCP tool integration',
     image: 'hermes',
-    sandbox: 'base',
+    sandbox: 'quay.io/eformat/hermes-openshell-playground:latest',
     models: [
-      { id: 'default', label: 'Default' },
+      { id: 'qwen36-27b', label: 'Qwen 36 27B' },
+      { id: 'claude-sonnet-4-6', label: 'Sonnet 4.6' },
     ],
   },
 ];

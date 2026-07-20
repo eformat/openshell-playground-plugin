@@ -1,0 +1,22 @@
+# Hermes Agent — OpenShell sandbox image
+# Build: podman build -t quay.io/eformat/hermes-openshell-playground:latest -f images/Containerfile.hermes .
+# Push: podman push quay.io/eformat/hermes-openshell-playground:latest
+FROM docker.io/nousresearch/hermes-agent:v2026.7.7.2
+
+USER root
+
+RUN apt-get update -qq && apt-get install -y -qq iproute2 2>/dev/null || true && \
+    rm -rf /var/lib/apt/lists/*
+
+RUN groupadd -g 1001 sandbox 2>/dev/null || true && \
+    useradd -m -u 1001 -g sandbox -s /bin/bash -d /sandbox sandbox 2>/dev/null || true
+
+RUN install -d -o sandbox -g sandbox /workspace /sandbox /sandbox/.hermes
+
+RUN chmod -R a+rX /opt/hermes && \
+    ln -sf /opt/hermes/.venv/bin/hermes /usr/local/bin/hermes
+
+ENV HERMES_HOME=/sandbox/.hermes
+ENV TERM=xterm-256color
+
+WORKDIR /workspace

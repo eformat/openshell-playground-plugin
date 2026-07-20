@@ -77,6 +77,54 @@ COPILOT_MODEL=$(curl -sk https://inference.local/v1/models 2>/dev/null | python3
 echo "Copilot ready. Run: copilot"
 echo "  Provider: inference.local (model: \${COPILOT_MODEL:-not detected})"`;
 
+const OLLAMA_SETUP = `mkdir -p /sandbox/.codex
+if [ ! -f /sandbox/.codex/config.toml ]; then
+  cat > /sandbox/.codex/config.toml << 'CODEXCFG'
+model_provider = "openshell"
+
+[model_providers.openshell]
+name = "OpenShell Inference"
+base_url = "https://inference.local/v1"
+env_key = "OPENAI_API_KEY"
+supports_websockets = false
+CODEXCFG
+fi
+export CODEX_HOME=/sandbox/.codex
+if [ ! -f /sandbox/opencode.json ] && command -v opencode >/dev/null 2>&1; then
+  MODELS=$(curl -sk https://inference.local/v1/models 2>/dev/null | python3 -c "import sys,json;d=json.load(sys.stdin);[print(m['id']) for m in d.get('data',[])]" 2>/dev/null)
+  if [ -n "$MODELS" ]; then
+    python3 -c "
+import json,sys
+ms = [l.strip() for l in sys.stdin if l.strip()]
+cfg = {'provider':{'openai-compatible':{'npm':'@ai-sdk/openai-compatible','options':{'baseURL':'https://inference.local/v1','apiKey':'unused'},'models':{m:{'name':m} for m in ms}}}}
+json.dump(cfg, open('/sandbox/opencode.json','w'), indent=2)
+" <<< "$MODELS"
+  fi
+fi
+echo "Ollama sandbox ready. Run: ollama"
+echo "  Agents: claude, codex, opencode (all via inference.local)"`;
+
+const PI_SETUP = `mkdir -p /sandbox/.pi/agent
+if [ ! -f /sandbox/.pi/agent/models.json ]; then
+  MODELS=$(curl -sk https://inference.local/v1/models 2>/dev/null | python3 -c "
+import sys,json
+d=json.load(sys.stdin)
+ms=[{'id':m['id']} for m in d.get('data',[])]
+cfg={'providers':{'openshell':{'baseUrl':'https://inference.local/v1','api':'openai-completions','apiKey':'unused','compat':{'supportsDeveloperRole':False,'supportsReasoningEffort':False},'models':ms}}}
+json.dump(cfg,open('/sandbox/.pi/agent/models.json','w'),indent=2)
+print(', '.join(m['id'] for m in ms))
+" 2>/dev/null)
+  [ -n "$MODELS" ] && echo "Pi configured with models: $MODELS"
+fi
+echo "Pi ready. Run: pi"
+echo "  Models config: ~/.pi/agent/models.json"
+echo "  Select model in Pi with /model"`;
+
+const HERMES_SETUP = `export HERMES_HOME=/sandbox/.hermes
+mkdir -p /sandbox/.hermes/{cron,sessions,logs/curator,memories,profiles,hooks,skills,dashboard-themes,pairing,image_cache,audio_cache} 2>/dev/null
+chmod -R 777 /sandbox/.hermes 2>/dev/null
+echo "Hermes Agent ready. Run: hermes chat"`;
+
 const DEFAULT_SETUP = `echo "Sandbox ready."`;
 
 function agentSetup(agentType: string): string {
@@ -85,6 +133,9 @@ function agentSetup(agentType: string): string {
     case 'codex': return CODEX_SETUP;
     case 'opencode': return OPENCODE_SETUP;
     case 'copilot': return COPILOT_SETUP;
+    case 'ollama': return OLLAMA_SETUP;
+    case 'pi': return PI_SETUP;
+    case 'hermes': return HERMES_SETUP;
     default: return DEFAULT_SETUP;
   }
 }
