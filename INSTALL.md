@@ -135,9 +135,32 @@ helm upgrade --install openshell-playground-plugin \
 
 ## Security Notes
 
-- **Privileged SCC**: Sandbox pods run with `system:openshift:scc:privileged` to support OpenShell's network namespace isolation and supervisor binary. This is the most security-sensitive permission.
-- **Runtime ClusterRoleBindings**: The plugin SA creates ClusterRoleBindings dynamically when users deploy gateways to new namespaces. This grants the gateway SA permissions to manage sandbox CRDs.
-- **User authentication**: All API requests pass through the OpenShift Console proxy with `UserToken` authorization. The plugin backend uses the logged-in user's token for namespace-scoped operations and its own SA token only for cluster-scoped operations (ClusterRoleBindings, SCC bindings).
+### Custom SCC (`openshell-sandbox`)
+
+The Helm chart creates a custom SecurityContextConstraints named `openshell-sandbox` with the minimum capabilities required by the OpenShell supervisor:
+
+| Capability | Purpose |
+|---|---|
+| `SYS_ADMIN` | Network namespace creation via `setns()` |
+| `NET_ADMIN` | nftables transparent proxy rules |
+| `SYS_PTRACE` | Process identity resolution via `/proc/<pid>/exe` |
+| `SYSLOG` | Bypass detection monitoring via `dmesg` |
+| `SETUID` / `SETGID` | Privilege dropping after supervisor bootstrap |
+| `DAC_READ_SEARCH` | Cross-boundary file reads for process inspection |
+
+The custom SCC does **not** grant: host networking, host PID, host IPC, privileged containers, or `allowPrivilegeEscalation`. This is significantly narrower than the built-in `privileged` SCC.
+
+When a user deploys a gateway, the plugin creates a namespace-scoped **RoleBinding** (not a ClusterRoleBinding) granting the `openshell-sandbox` SA access to this SCC in that namespace only. The RoleBinding is cleaned up when the namespace is deleted.
+
+### RBAC
+
+- **Plugin SA**: Has cluster-scoped permissions to create RoleBindings and ClusterRoleBindings for gateway deployments, validate user tokens (TokenReviews), and manage sandbox CRDs. The plugin SA also holds the gateway ClusterRole and custom SCC `use` permission to satisfy RBAC escalation checks.
+- **Gateway SA** (`openshell-gateway`): Manages pods, services, secrets, and sandbox CRDs within its namespace via a ClusterRoleBinding created per-namespace.
+- **Sandbox SA** (`openshell-sandbox`): Granted the custom SCC via a namespace-scoped RoleBinding. The SA token is not auto-mounted into sandbox pods.
+
+### User Authentication
+
+All API requests pass through the OpenShift Console proxy with `UserToken` authorization. The plugin backend uses the logged-in user's token for namespace-scoped operations and its own SA token only for cluster-scoped operations (ClusterRoleBindings, SCC RoleBindings).
 
 ---
 

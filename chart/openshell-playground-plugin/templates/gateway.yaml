@@ -25,15 +25,16 @@ metadata:
     app: openshell
 ---
 apiVersion: rbac.authorization.k8s.io/v1
-kind: ClusterRoleBinding
+kind: RoleBinding
 metadata:
-  name: {{ include "openshell-playground-plugin.fullname" . }}-sandbox-scc
+  name: openshell-sandbox-scc
+  namespace: {{ .Values.gateway.namespace }}
   labels:
     {{- include "openshell-playground-plugin.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: system:openshift:scc:privileged
+  name: system:openshift:scc:openshell-sandbox
 subjects:
   - kind: ServiceAccount
     name: openshell-sandbox

@@ -87,6 +87,9 @@ rules:
   - apiGroups: ["rbac.authorization.k8s.io"]
     resources: ["clusterrolebindings"]
     verbs: ["create", "get", "delete"]
+  - apiGroups: ["rbac.authorization.k8s.io"]
+    resources: ["rolebindings"]
+    verbs: ["create", "get", "delete"]
 ---
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
@@ -98,6 +101,37 @@ roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
   name: {{ include "openshell-playground-plugin.fullname" . }}-openshell
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "openshell-playground-plugin.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "openshell-playground-plugin.fullname" . }}-gateway-escalation
+  labels:
+    {{- include "openshell-playground-plugin.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "openshell-playground-plugin.fullname" . }}-gateway
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "openshell-playground-plugin.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}
+---
+# Plugin SA needs the custom SCC 'use' permission to create RoleBindings granting it
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "openshell-playground-plugin.fullname" . }}-scc-escalation
+  labels:
+    {{- include "openshell-playground-plugin.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:openshift:scc:openshell-sandbox
 subjects:
   - kind: ServiceAccount
     name: {{ include "openshell-playground-plugin.serviceAccountName" . }}
