@@ -23,5 +23,22 @@
       "perspective": "admin",
       "section": "openshell"
     }
+  },
+  {
+    "type": "console.page/route",
+    "properties": {
+      "path": "/openshell/help/:topic?",
+      "component": { "$codeRef": "HelpPage" }
+    }
+  },
+  {
+    "type": "console.navigation/href",
+    "properties": {
+      "id": "openshell-help",
+      "name": "Help",
+      "href": "/openshell/help/getting-started",
+      "perspective": "admin",
+      "section": "openshell"
+    }
   }
 ]

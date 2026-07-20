@@ -47,6 +47,9 @@
   },
   "dependencies": {
     "js-base64": "^3.7.0",
+    "react-markdown": "8",
+    "rehype-raw": "6",
+    "remark-gfm": "3",
     "xterm": "^5.3.0",
     "xterm-addon-canvas": "^0.5.0",
     "xterm-addon-fit": "^0.8.0"
@@ -57,7 +60,8 @@
     "displayName": "OpenShell Playground",
     "description": "Deploy and interact with OpenShell agent sandboxes",
     "exposedModules": {
-      "PlaygroundPage": "./components/PlaygroundPage"
+      "PlaygroundPage": "./components/PlaygroundPage",
+      "HelpPage": "./components/HelpPage"
     },
     "dependencies": {
       "@console/pluginAPI": "*"
