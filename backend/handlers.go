@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"log"
 	"net/http"
+	"regexp"
 	"strings"
 	"time"
 
@@ -13,8 +14,27 @@ import (
 	"k8s.io/apimachinery/pkg/runtime/schema"
 	"k8s.io/client-go/dynamic"
 	"k8s.io/client-go/kubernetes"
-	"k8s.io/client-go/rest"
 )
+
+var safeNameRegex = regexp.MustCompile(`^[a-zA-Z0-9._-]+$`)
+
+func sanitizeName(s string) error {
+	if s == "" || !safeNameRegex.MatchString(s) {
+		return fmt.Errorf("invalid name: must match [a-zA-Z0-9._-]+")
+	}
+	return nil
+}
+
+func sanitizeImageRef(s string) error {
+	if s == "" {
+		return nil
+	}
+	ok := regexp.MustCompile(`^[a-zA-Z0-9._:/@-]+$`).MatchString(s)
+	if !ok {
+		return fmt.Errorf("invalid image reference")
+	}
+	return nil
+}
 
 var sandboxTemplateGVR = schema.GroupVersionResource{
 	Group:    "extensions.agents.x-k8s.io",
@@ -34,19 +54,26 @@ var sandboxGVR = schema.GroupVersionResource{
 	Resource: "sandboxes",
 }
 
-func (s *server) userClients(r *http.Request) (kubernetes.Interface, dynamic.Interface, *rest.Config, error) {
+func (s *server) userClients(r *http.Request) (kubernetes.Interface, dynamic.Interface, error) {
 	client, dynClient, err := clientFromRequest(r, s.baseConfig)
 	if err != nil {
-		return s.client, s.dynClient, s.baseConfig, nil
+		return nil, nil, fmt.Errorf("unauthorized: %w", err)
 	}
-	cfg := rest.CopyConfig(s.baseConfig)
-	token := r.Header.Get("Authorization")
-	if strings.HasPrefix(token, "Bearer ") {
-		token = token[7:]
+	return client, dynClient, nil
+}
+
+func (s *server) authorizeNamespace(r *http.Request, namespace string) error {
+	userClient, _, err := s.userClients(r)
+	if err != nil {
+		return fmt.Errorf("unauthorized")
 	}
-	cfg.BearerToken = token
-	cfg.BearerTokenFile = ""
-	return client, dynClient, cfg, nil
+	ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
+	defer cancel()
+	_, err = userClient.CoreV1().Pods(namespace).List(ctx, metav1.ListOptions{Limit: 1})
+	if err != nil {
+		return fmt.Errorf("access denied to namespace %s", namespace)
+	}
+	return nil
 }
 
 func writeJSON(w http.ResponseWriter, v interface{}) {
@@ -75,7 +102,7 @@ func (s *server) handleNamespaces(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
-	_, userDyn, _, err := s.userClients(r)
+	_, userDyn, err := s.userClients(r)
 	if err != nil {
 		writeError(w, 401, "unauthorized")
 		return
@@ -233,6 +260,24 @@ func (s *server) handleProviders(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 400, "invalid request body")
 			return
 		}
+		if err := sanitizeName(req.Name); err != nil {
+			writeError(w, 400, fmt.Sprintf("invalid provider name: %v", err))
+			return
+		}
+		if err := sanitizeName(req.Type); err != nil {
+			writeError(w, 400, fmt.Sprintf("invalid provider type: %v", err))
+			return
+		}
+		for k := range req.Credentials {
+			if err := sanitizeName(k); err != nil {
+				writeError(w, 400, fmt.Sprintf("invalid credential key: %v", err))
+				return
+			}
+		}
+		if err := s.authorizeNamespace(r, req.Namespace); err != nil {
+			writeError(w, 403, err.Error())
+			return
+		}
 
 		configKeys := map[string]bool{
 			"VERTEX_AI_PROJECT_ID": true,
@@ -298,6 +343,14 @@ func (s *server) handleProviders(w http.ResponseWriter, r *http.Request) {
 		name := r.URL.Query().Get("name")
 		if ns == "" || name == "" {
 			writeError(w, 400, "namespace and name required")
+			return
+		}
+		if err := sanitizeName(name); err != nil {
+			writeError(w, 400, fmt.Sprintf("invalid name: %v", err))
+			return
+		}
+		if err := s.authorizeNamespace(r, ns); err != nil {
+			writeError(w, 403, err.Error())
 			return
 		}
 		cmd := fmt.Sprintf("openshell provider delete %s", name)
@@ -388,7 +441,7 @@ func (s *server) handleAgents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userClient, _, _, _ := s.userClients(r)
+	userClient, _, _ := s.userClients(r)
 
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
@@ -562,7 +615,7 @@ func (s *server) handleAgentPod(w http.ResponseWriter, r *http.Request, name, ns
 		return
 	}
 
-	userClient, _, _, _ := s.userClients(r)
+	userClient, _, _ := s.userClients(r)
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
@@ -591,6 +644,14 @@ func (s *server) handleAgentPod(w http.ResponseWriter, r *http.Request, name, ns
 func (s *server) handleDeleteAgent(w http.ResponseWriter, r *http.Request, name, ns string) {
 	if ns == "" {
 		writeError(w, 400, "namespace required")
+		return
+	}
+	if err := sanitizeName(name); err != nil {
+		writeError(w, 400, fmt.Sprintf("invalid name: %v", err))
+		return
+	}
+	if err := s.authorizeNamespace(r, ns); err != nil {
+		writeError(w, 403, err.Error())
 		return
 	}
 
@@ -622,6 +683,31 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	}
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		writeError(w, 400, "invalid request body")
+		return
+	}
+
+	for _, check := range []struct{ name, val string }{
+		{"gateway", req.Gateway}, {"provider", req.Provider}, {"agentLabel", req.AgentLabel},
+	} {
+		if check.val != "" {
+			if err := sanitizeName(check.val); err != nil {
+				writeError(w, 400, fmt.Sprintf("invalid %s: %v", check.name, err))
+				return
+			}
+		}
+	}
+	if err := sanitizeImageRef(req.AgentType); err != nil {
+		writeError(w, 400, fmt.Sprintf("invalid agentType: %v", err))
+		return
+	}
+	if req.WarmPool != "" {
+		if err := sanitizeName(req.WarmPool); err != nil {
+			writeError(w, 400, fmt.Sprintf("invalid warmPool: %v", err))
+			return
+		}
+	}
+	if err := s.authorizeNamespace(r, req.Namespace); err != nil {
+		writeError(w, 403, err.Error())
 		return
 	}
 
@@ -717,7 +803,7 @@ func (s *server) handleGatewayPod(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userClient, _, _, _ := s.userClients(r)
+	userClient, _, _ := s.userClients(r)
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()

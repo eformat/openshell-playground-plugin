@@ -137,3 +137,19 @@ subjects:
   - kind: ServiceAccount
     name: {{ include "openshell-playground-plugin.serviceAccountName" . }}
     namespace: {{ .Release.Namespace }}
+---
+# Plugin SA needs gateway-auth permissions for RBAC escalation check
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: {{ include "openshell-playground-plugin.fullname" . }}-auth-escalation
+  labels:
+    {{- include "openshell-playground-plugin.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "openshell-playground-plugin.fullname" . }}-gateway-auth
+subjects:
+  - kind: ServiceAccount
+    name: {{ include "openshell-playground-plugin.serviceAccountName" . }}
+    namespace: {{ .Release.Namespace }}

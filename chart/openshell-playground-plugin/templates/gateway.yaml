@@ -66,6 +66,32 @@ rules:
   - apiGroups: [""]
     resources: ["events"]
     verbs: ["get", "list", "watch", "create"]
+---
+# Namespace-scoped binding for pod/secret/sandbox operations
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: openshell-gateway
+  namespace: {{ .Values.gateway.namespace }}
+  labels:
+    {{- include "openshell-playground-plugin.labels" . | nindent 4 }}
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: {{ include "openshell-playground-plugin.fullname" . }}-gateway
+subjects:
+  - kind: ServiceAccount
+    name: openshell-gateway
+    namespace: {{ .Values.gateway.namespace }}
+---
+# Cluster-scoped auth permissions (tokenreviews are cluster-scoped resources)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: {{ include "openshell-playground-plugin.fullname" . }}-gateway-auth
+  labels:
+    {{- include "openshell-playground-plugin.labels" . | nindent 4 }}
+rules:
   - apiGroups: ["authentication.k8s.io"]
     resources: ["tokenreviews"]
     verbs: ["create"]
@@ -76,13 +102,13 @@ rules:
 apiVersion: rbac.authorization.k8s.io/v1
 kind: ClusterRoleBinding
 metadata:
-  name: {{ include "openshell-playground-plugin.fullname" . }}-gateway
+  name: {{ include "openshell-playground-plugin.fullname" . }}-gateway-auth
   labels:
     {{- include "openshell-playground-plugin.labels" . | nindent 4 }}
 roleRef:
   apiGroup: rbac.authorization.k8s.io
   kind: ClusterRole
-  name: {{ include "openshell-playground-plugin.fullname" . }}-gateway
+  name: {{ include "openshell-playground-plugin.fullname" . }}-gateway-auth
 subjects:
   - kind: ServiceAccount
     name: openshell-gateway
