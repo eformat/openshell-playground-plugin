@@ -1,4 +1,5 @@
 {{- if .Values.warmPool.enabled }}
+---
 apiVersion: extensions.agents.x-k8s.io/v1beta1
 kind: SandboxWarmPool
 metadata:
