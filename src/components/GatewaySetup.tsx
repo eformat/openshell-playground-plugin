@@ -29,7 +29,14 @@ const GatewaySetup: React.FC<GatewaySetupProps> = ({ namespace, onDeployed }) =>
     setError('');
     try {
       await api.deployGateway(namespace, agentType);
-      setTimeout(onDeployed, 3000);
+      // Poll until gateway pod is ready (both containers)
+      for (let i = 0; i < 60; i++) {
+        const gws = await api.listGateways(namespace).catch(() => []);
+        const gw = gws.find((g) => g.agentType === agentType);
+        if (gw && gw.status === 'Running') break;
+        await new Promise((r) => setTimeout(r, 2000));
+      }
+      onDeployed();
     } catch (err: any) {
       setError(err.message || 'Failed to deploy gateway');
       setDeploying(false);

@@ -182,7 +182,7 @@ const PlaygroundPage: React.FC = () => {
         <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', flex: 1 }}>
           <Spinner size="xl" />
         </div>
-      ) : gateways.length === 0 ? (
+      ) : !gateways.some((g) => g.status === 'Running') ? (
         <GatewaySetup namespace={namespace} onDeployed={loadGateways} />
       ) : (
         <>

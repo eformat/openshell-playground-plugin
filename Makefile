@@ -22,6 +22,10 @@ podman-build: compile
 podman-build-nocompile:
 	podman build -t $(IMG) .
 
+.PHONY: podman-build-nocache
+podman-build-nocache: compile
+	podman build --no-cache -t $(IMG) .
+
 .PHONY: podman-push
 podman-push: podman-build
 	podman push $(IMG)
@@ -29,6 +33,15 @@ podman-push: podman-build
 .PHONY: podman-push-nocompile
 podman-push-nocompile: podman-build-nocompile
 	podman push $(IMG)
+
+.PHONY: podman-push-nocache
+podman-push-nocache: podman-build-nocache
+	podman push $(IMG)
+
+.PHONY: deploy
+deploy: podman-push-nocache
+	oc rollout restart deployment/$(CHART_NAME) -n $(NAMESPACE)
+	oc rollout status deployment/$(CHART_NAME) -n $(NAMESPACE) --timeout=60s
 
 .PHONY: helm-install
 helm-install:
