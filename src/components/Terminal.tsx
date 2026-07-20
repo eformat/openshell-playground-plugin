@@ -12,6 +12,7 @@ type TerminalProps = {
 export type ImperativeTerminalType = {
   focus: () => void;
   reset: () => void;
+  refit: () => void;
   getSize: () => { cols: number; rows: number };
   onDataReceived: (data: string) => void;
   onConnectionClosed: (msg: string) => void;
@@ -20,6 +21,7 @@ export type ImperativeTerminalType = {
 const Terminal = React.forwardRef<ImperativeTerminalType, TerminalProps>(
   ({ onData, onResize }, ref) => {
     const terminal = React.useRef<XTerminal>();
+    const fitAddonRef = React.useRef<FitAddon>();
     const containerRef = React.useRef<HTMLDivElement>();
 
     React.useEffect(() => {
@@ -52,6 +54,7 @@ const Terminal = React.forwardRef<ImperativeTerminalType, TerminalProps>(
         },
       });
       const fitAddon = new FitAddon();
+      fitAddonRef.current = fitAddon;
       term.loadAddon(fitAddon);
       term.open(containerRef.current);
       try { term.loadAddon(new CanvasAddon()); } catch (_) { /* canvas not available, use DOM fallback */ }
@@ -96,6 +99,9 @@ const Terminal = React.forwardRef<ImperativeTerminalType, TerminalProps>(
         terminal.current.reset();
         terminal.current.clear();
         terminal.current.options.disableStdin = false;
+      },
+      refit: () => {
+        try { fitAddonRef.current?.fit(); } catch (_) {}
       },
       getSize: () => {
         if (!terminal.current) return { cols: 80, rows: 25 };

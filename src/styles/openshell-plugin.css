@@ -347,6 +347,30 @@
   background: var(--pf-t--global--background--color--secondary--default);
 }
 
+/* === Fullscreen === */
+.os-fullscreen-btn {
+  padding: 2px 8px;
+  font-size: 16px;
+  line-height: 1;
+  border: none;
+  background: transparent;
+  color: var(--pf-t--global--text--color--subtle);
+  cursor: pointer;
+  border-radius: 4px;
+}
+
+.os-fullscreen-btn:hover {
+  color: var(--pf-t--global--text--color--regular);
+  background: var(--pf-t--global--background--color--primary--hover);
+}
+
+.os-term-panel:fullscreen,
+.os-sandbox-terms:fullscreen {
+  width: 100vw;
+  height: 100vh;
+  background: var(--pf-t--global--background--color--primary--default, #1e1e2e);
+}
+
 /* === Terminal === */
 .os-terminal {
   height: 100%;

@@ -35,7 +35,7 @@ cd /sandbox
 set +m
 trap 'kill 0' EXIT`;
 
-const CLAUDE_SETUP = `echo "Claude Code ready. Run: claude"`;
+const CLAUDE_SETUP = `echo "Claude Code ready. Run: claude --bare"`;
 
 const CODEX_SETUP = `mkdir -p /sandbox/.codex
 if [ ! -f /sandbox/.codex/config.toml ]; then
@@ -50,7 +50,7 @@ supports_websockets = false
 CODEXCFG
 fi
 export CODEX_HOME=/sandbox/.codex
-echo "Codex ready. Run: codex"`;
+echo "Codex ready. Run: codex --full-auto"`;
 
 
 const OPENCODE_SETUP = `if [ -f /sandbox/.local/share/opencode/opencode.db ]; then
@@ -160,6 +160,23 @@ const SandboxTerminals: React.FC<SandboxTerminalsProps> = ({
 }) => {
   const [podInfoMap, setPodInfoMap] = React.useState<Record<string, PodInfo>>({});
   const [loadingPods, setLoadingPods] = React.useState<Record<string, boolean>>({});
+  const [fullscreen, setFullscreen] = React.useState(false);
+  const containerRef = React.useRef<HTMLDivElement>(null);
+
+  const toggleFullscreen = React.useCallback(() => {
+    if (!containerRef.current) return;
+    if (!document.fullscreenElement) {
+      containerRef.current.requestFullscreen().catch(() => {});
+    } else {
+      document.exitFullscreen().catch(() => {});
+    }
+  }, []);
+
+  React.useEffect(() => {
+    const handler = () => setFullscreen(!!document.fullscreenElement);
+    document.addEventListener('fullscreenchange', handler);
+    return () => document.removeEventListener('fullscreenchange', handler);
+  }, []);
 
   const hasMultipleNamespaces = React.useMemo(() => {
     const ns = new Set(agents.map((a) => a.namespace));
@@ -195,7 +212,7 @@ const SandboxTerminals: React.FC<SandboxTerminalsProps> = ({
   }
 
   return (
-    <div className="os-sandbox-terms">
+    <div className="os-sandbox-terms" ref={containerRef}>
       <div className="os-sandbox-terms__header">
         <div className="os-sandbox-terms__tabs">
           {agents.map((agent) => {
@@ -222,9 +239,14 @@ const SandboxTerminals: React.FC<SandboxTerminalsProps> = ({
             );
           })}
         </div>
-        <Button variant="plain" size="sm" onClick={onCloseAll} aria-label="Close all" style={{ fontSize: 12, padding: '2px 8px' }}>
-          Close all
-        </Button>
+        <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
+          <button className="os-fullscreen-btn" onClick={toggleFullscreen} title={fullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'}>
+            {fullscreen ? '✖' : '⤢'}
+          </button>
+          <Button variant="plain" size="sm" onClick={onCloseAll} aria-label="Close all" style={{ fontSize: 12, padding: '2px 8px' }}>
+            Close all
+          </Button>
+        </div>
       </div>
 
       <div className="os-sandbox-terms__body">

@@ -9,6 +9,7 @@ interface TerminalSessionProps {
   namespace: string;
   isActive: boolean;
   autoCommand?: string;
+  refitKey?: number;
 }
 
 type Status = 'connecting' | 'connected' | 'error' | 'closed';
@@ -19,6 +20,7 @@ const TerminalSession: React.FC<TerminalSessionProps> = ({
   namespace,
   isActive,
   autoCommand,
+  refitKey,
 }) => {
   const [status, setStatus] = React.useState<Status>('connecting');
   const [errorMessage, setErrorMessage] = React.useState('');
@@ -121,6 +123,12 @@ const TerminalSession: React.FC<TerminalSessionProps> = ({
       terminalRef.current.focus();
     }
   }, [isActive]);
+
+  React.useEffect(() => {
+    if (refitKey !== undefined) {
+      setTimeout(() => terminalRef.current?.refit(), 100);
+    }
+  }, [refitKey]);
 
   const handleData = React.useCallback((data: string) => {
     if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
