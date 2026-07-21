@@ -109,7 +109,9 @@ const Terminal = React.forwardRef<ImperativeTerminalType, TerminalProps>(
       },
       onDataReceived: (data: string) => {
         if (!terminal.current) return;
-        const cleaned = data.replace(/\x1b\[\?2026[hl]/g, '');
+        const cleaned = data
+          .replace(/\x1b\[\?2026[hl]/g, '')           // synchronized output mode
+          .replace(/\x1b\]11;[^\x07\x1b]*(\x07|\x1b\\)/g, ''); // OSC 11 bg color response
         if (cleaned) terminal.current.write(cleaned);
       },
       onConnectionClosed: (msg: string) => {

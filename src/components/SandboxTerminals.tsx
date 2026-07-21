@@ -123,7 +123,18 @@ echo "  Select model in Pi with /model"`;
 const HERMES_SETUP = `export HERMES_HOME=/sandbox/.hermes
 mkdir -p /sandbox/.hermes/{cron,sessions,logs/curator,memories,profiles,hooks,skills,dashboard-themes,pairing,image_cache,audio_cache} 2>/dev/null
 chmod -R 777 /sandbox/.hermes 2>/dev/null
-echo "Hermes Agent ready. Run: hermes chat"`;
+if command -v hermes >/dev/null 2>&1; then
+  MODEL=$(curl -sk https://inference.local/v1/models 2>/dev/null | python3 -c "import sys,json;d=json.load(sys.stdin);print(d['data'][0]['id'])" 2>/dev/null)
+  if [ -n "$MODEL" ]; then
+    hermes config set model.provider openai-api 2>/dev/null
+    hermes config set model.default "$MODEL" 2>/dev/null
+    hermes config set openai_api.base_url https://inference.local/v1 2>/dev/null
+    hermes config set openai_api.api_key unused 2>/dev/null
+    echo "Hermes configured: provider=openai-api model=$MODEL"
+  fi
+fi
+echo "Hermes Agent ready. Run: hermes chat"
+echo "  Kanban: hermes kanban list / create / dispatch"`;
 
 const DEFAULT_SETUP = `echo "Sandbox ready."`;
 
