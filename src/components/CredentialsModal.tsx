@@ -146,16 +146,18 @@ const CredentialsModal: React.FC<CredentialsModalProps> = ({
               />
             </FormGroup>
             <FormGroup label="Service Account JSON (optional)" fieldId="gcp-sa">
-              <FileUpload
-                id="gcp-sa"
-                type="text"
-                value={gcpFile}
-                filename={gcpFilename}
-                onTextChange={(_e, val) => setGcpFile(val)}
-                onFileInputChange={(_e, file) => setGcpFilename(file.name)}
-                onDataChange={(_e, val) => setGcpFile(val)}
-                browseButtonText="Upload JSON"
-              />
+              <div style={gcpFile ? { filter: 'blur(4px)', transition: 'filter 0.2s' } : {}}>
+                <FileUpload
+                  id="gcp-sa"
+                  type="text"
+                  value={gcpFile}
+                  filename={gcpFilename}
+                  onTextChange={(_e, val) => setGcpFile(val)}
+                  onFileInputChange={(_e, file) => setGcpFilename(file.name)}
+                  onDataChange={(_e, val) => setGcpFile(val)}
+                  browseButtonText="Upload JSON"
+                />
+              </div>
             </FormGroup>
           </>
         )}
