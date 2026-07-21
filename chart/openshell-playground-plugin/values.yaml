@@ -29,34 +29,3 @@ resources:
 serviceAccount:
   create: true
   name: ""
-
-# --- OpenShell Gateway (deployed to its own namespace) ---
-gateway:
-  enabled: true
-  namespace: openshell-playground
-  image:
-    repository: quay.io/eformat/openshell-gateway
-    tag: v0.0.85
-    pullPolicy: Always
-  service:
-    type: ClusterIP
-    port: 8080
-  resources:
-    requests:
-      cpu: 100m
-      memory: 256Mi
-    limits:
-      cpu: "1"
-      memory: 1Gi
-
-# --- Sandbox Template CRD (deployed to gateway namespace) ---
-sandboxTemplate:
-  enabled: true
-  name: hermes-agent
-  image: quay.io/eformat/hermes-openshell:latest
-  supervisorImage: quay.io/eformat/openshell-supervisor:v0.0.85
-
-# --- Warm Pool ---
-warmPool:
-  enabled: false
-  replicas: 1

@@ -3,6 +3,8 @@ apiVersion: console.openshift.io/v1
 kind: ConsolePlugin
 metadata:
   name: {{ .Values.plugin.name }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
 spec:
   displayName: {{ .Values.plugin.displayName | quote }}
   backend:

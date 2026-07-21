@@ -5,6 +5,8 @@ metadata:
   name: {{ include "openshell-playground-plugin.fullname" . }}
   labels:
     {{- include "openshell-playground-plugin.labels" . | nindent 4 }}
+  annotations:
+    argocd.argoproj.io/sync-wave: "2"
 spec:
   replicas: {{ .Values.replicaCount }}
   selector:
