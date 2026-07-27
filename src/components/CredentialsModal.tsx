@@ -37,6 +37,7 @@ const CredentialsModal: React.FC<CredentialsModalProps> = ({
   const [gcpRegion, setGcpRegion] = React.useState('global');
   const [gcpFile, setGcpFile] = React.useState('');
   const [gcpFilename, setGcpFilename] = React.useState('');
+  const [gcpJsonType, setGcpJsonType] = React.useState<'service_account' | 'authorized_user' | 'unknown' | ''>('');
   const [baseUrl, setBaseUrl] = React.useState('');
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState('');
@@ -49,6 +50,7 @@ const CredentialsModal: React.FC<CredentialsModalProps> = ({
     setGcpRegion('global');
     setGcpFile('');
     setGcpFilename('');
+    setGcpJsonType('');
     setBaseUrl('');
     setError('');
   };
@@ -56,6 +58,10 @@ const CredentialsModal: React.FC<CredentialsModalProps> = ({
   const handleSubmit = async () => {
     if (!providerName.trim()) {
       setError('Provider name is required');
+      return;
+    }
+    if (providerType === 'google-vertex-ai' && !gcpFile.trim()) {
+      setError('Credentials JSON is required for Google Vertex AI');
       return;
     }
     setLoading(true);
@@ -145,16 +151,53 @@ const CredentialsModal: React.FC<CredentialsModalProps> = ({
                 placeholder="global"
               />
             </FormGroup>
-            <FormGroup label="Service Account JSON (optional)" fieldId="gcp-sa">
+            <FormGroup label="Credentials JSON" isRequired fieldId="gcp-sa">
+              {gcpJsonType === 'service_account' && <div style={{ fontSize: 12, color: 'var(--pf-t--global--color--status--success--default)', marginBottom: 4 }}>✓ Service Account key detected — GCP Project ID auto-filled</div>}
+              {gcpJsonType === 'authorized_user' && <div style={{ fontSize: 12, color: 'var(--pf-t--global--color--status--info--default)', marginBottom: 4 }}>✓ ADC user credentials detected</div>}
+              {!gcpJsonType && <div style={{ fontSize: 12, color: 'var(--pf-t--global--text--color--subtle)', marginBottom: 4 }}>Paste a Service Account JSON key or ADC credentials JSON</div>}
               <div style={gcpFile ? { filter: 'blur(4px)', transition: 'filter 0.2s' } : {}}>
                 <FileUpload
                   id="gcp-sa"
                   type="text"
                   value={gcpFile}
                   filename={gcpFilename}
-                  onTextChange={(_e, val) => setGcpFile(val)}
+                  onTextChange={(_e, val) => {
+                    setGcpFile(val);
+                    try {
+                      const parsed = JSON.parse(val);
+                      const typ = parsed.type as string;
+                      if (typ === 'service_account') {
+                        setGcpJsonType('service_account');
+                        if (!gcpProjectId && parsed.project_id) setGcpProjectId(parsed.project_id);
+                      } else if (typ === 'authorized_user') {
+                        setGcpJsonType('authorized_user');
+                        if (!gcpProjectId && parsed.quota_project_id) setGcpProjectId(parsed.quota_project_id);
+                      } else {
+                        setGcpJsonType('unknown');
+                      }
+                    } catch (_) {
+                      setGcpJsonType(val ? 'unknown' : '');
+                    }
+                  }}
                   onFileInputChange={(_e, file) => setGcpFilename(file.name)}
-                  onDataChange={(_e, val) => setGcpFile(val)}
+                  onDataChange={(_e, val) => {
+                    setGcpFile(val);
+                    try {
+                      const parsed = JSON.parse(val);
+                      const typ = parsed.type as string;
+                      if (typ === 'service_account') {
+                        setGcpJsonType('service_account');
+                        if (!gcpProjectId && parsed.project_id) setGcpProjectId(parsed.project_id);
+                      } else if (typ === 'authorized_user') {
+                        setGcpJsonType('authorized_user');
+                        if (!gcpProjectId && parsed.quota_project_id) setGcpProjectId(parsed.quota_project_id);
+                      } else {
+                        setGcpJsonType('unknown');
+                      }
+                    } catch (_) {
+                      setGcpJsonType(val ? 'unknown' : '');
+                    }
+                  }}
                   browseButtonText="Upload JSON"
                 />
               </div>

@@ -24,12 +24,19 @@ Select **+ New provider** from the Provider dropdown on any gateway tab to open 
 
 ### Google Vertex AI
 
-Use this for Claude models through Google Cloud. You need:
-- A GCP project with the Vertex AI API enabled
-- A service account with `aiplatform.endpoints.predict` permission
-- The service account key JSON file
+Use this for Claude models through Google Cloud. The credentials JSON field accepts two formats — the modal auto-detects which type you paste:
 
-The gateway uses the JSON to mint OAuth tokens internally. The credentials never reach the sandbox.
+**Service Account JSON key** (recommended for production):
+- A GCP project with the Vertex AI API enabled
+- A service account with `roles/aiplatform.user` permission
+- Generate with: `gcloud iam service-accounts keys create key.json --iam-account=my-sa@my-project.iam.gserviceaccount.com`
+- The `project_id` field is auto-filled from the JSON
+
+**ADC credentials** (for user accounts):
+- Run `gcloud auth application-default login` on your machine
+- Upload or paste `~/.config/gcloud/application_default_credentials.json`
+
+The gateway uses the JSON to mint short-lived OAuth tokens internally. Credentials never leave the gateway pod.
 
 ### Anthropic
 
