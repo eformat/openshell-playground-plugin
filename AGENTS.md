@@ -252,6 +252,51 @@ Terminal setup is in `src/components/SandboxTerminals.tsx` — the `agentSetup()
 
 ---
 
+## OpenShell Supervisor Version Pinning
+
+The OpenShell supervisor binary is injected into sandbox pods via a Kubernetes image volume. The gateway TOML `supervisor_image` field controls which image is used.
+
+### Current Pinned Version
+
+The plugin pins to **openshell-sandbox 0.0.86** via a self-hosted image:
+
+```
+supervisor_image = "quay.io/eformat/openshell-supervisor:0.0.86"
+```
+
+**Source:** `backend/gateway_deploy.go` — the `supervisor_image` constant in the gateway TOML template.
+
+**Reason:** OpenShell supervisor 0.0.91 (the `latest` tag as of 2026-07-27) has a regression where `SubmitPolicyAnalysis` is never called. This breaks OPA policy proposal generation — network rules never appear in the gateway TUI.
+
+**Symptom of regression:** Gateway TUI shows "No network rules yet" even after sandbox makes outbound connections. The gateway logs show only `GetDraftPolicy` calls, never `SubmitPolicyAnalysis`.
+
+**How we detected it:** `user-developer` namespace sandbox (running 0.0.86, started 6 days earlier) generated rules correctly. `user-mhepburn` sandbox (freshly pulled, got 0.0.91) did not.
+
+**Our pinned image:** The 0.0.86 binary was copied from the working sandbox and baked into `quay.io/eformat/openshell-supervisor:0.0.86` (see `images/Containerfile.supervisor`).
+
+### Upgrading the Supervisor
+
+When upgrading, test policy proposal generation before shipping:
+
+1. Deploy a new gateway
+2. Deploy a sandbox
+3. From the sandbox terminal, make a blocked outbound connection: `curl -k https://eformat.me`
+4. Check the gateway TUI — network rules should appear within seconds
+5. If no rules appear, check gateway logs for `SubmitPolicyAnalysis` calls:
+   ```bash
+   oc logs openshell-<type>-0 -n <namespace> -c openshell | grep SubmitPolicy
+   ```
+6. If absent, the supervisor version has a regression — revert to the last working version
+
+To update the pinned version:
+1. Verify the new version works using the test above
+2. Copy the binary: `oc cp sandbox-<id>:/opt/openshell/bin/openshell-sandbox /tmp/openshell-sandbox-X.Y.Z -c agent`
+3. Build and push: `podman build -t quay.io/eformat/openshell-supervisor:X.Y.Z -f images/Containerfile.supervisor images/`
+4. Update `supervisor_image` in `backend/gateway_deploy.go`
+5. Run `make deploy`
+
+---
+
 ## Adding a New Agent
 
 1. Add an entry to `AGENT_TYPES` in `src/utils/types.ts` with the sandbox image and model suggestions
