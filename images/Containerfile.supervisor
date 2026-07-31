@@ -1,5 +1,5 @@
-# Pinned OpenShell supervisor v0.0.86
-# Build: podman build -t quay.io/eformat/openshell-supervisor:0.0.86 -f images/Containerfile.supervisor images/
-# Push: podman push quay.io/eformat/openshell-supervisor:0.0.86
+# OpenShell supervisor (0.0.95-dev.12+g03e04163)
+# Build: podman build -t quay.io/eformat/openshell-supervisor:0.0.95-dev -f images/Containerfile.supervisor images/
+# Push: podman push quay.io/eformat/openshell-supervisor:0.0.95-dev
 FROM scratch
 COPY openshell-sandbox /openshell-sandbox

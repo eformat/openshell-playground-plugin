@@ -1,0 +1,7 @@
+# OpenShell Deployer (CLI + ttyd sidecar) — dev build
+# Build: podman build -t quay.io/eformat/openshell-deployer:0.0.95-dev -f images/Containerfile.deployer images/
+# Push: podman push quay.io/eformat/openshell-deployer:0.0.95-dev
+FROM quay.io/eformat/openshell-deployer:v0.0.85
+
+COPY openshell /usr/bin/openshell
+RUN chmod +x /usr/bin/openshell

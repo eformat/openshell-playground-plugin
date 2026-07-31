@@ -647,10 +647,38 @@ func (s *server) handleAgentPod(w http.ResponseWriter, r *http.Request, name, ns
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 	defer cancel()
 
+	// Try direct name lookup first (old naming: sandbox-xxxxx)
 	pod, err := userClient.CoreV1().Pods(ns).Get(ctx, name, metav1.GetOptions{})
 	if err != nil {
-		writeError(w, 404, fmt.Sprintf("no pod found for sandbox %s", name))
-		return
+		// New naming convention (0.0.95+): {workspace}--{sandbox_name}
+		// Look up the Sandbox CR to find the workspace, then construct pod name
+		sandboxCR, crErr := userClient.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{Limit: 1})
+		_ = sandboxCR
+		_ = crErr
+		// Try common workspace prefixes: "default--{name}"
+		pod2, err2 := userClient.CoreV1().Pods(ns).Get(ctx, fmt.Sprintf("default--%s", name), metav1.GetOptions{})
+		if err2 == nil {
+			pod = pod2
+		} else {
+			// Last resort: list all pods and find one whose name ends with the sandbox name
+			allPods, listErr := userClient.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{})
+			if listErr != nil {
+				writeError(w, 404, fmt.Sprintf("no pod found for sandbox %s", name))
+				return
+			}
+			found := false
+			for i := range allPods.Items {
+				if strings.HasSuffix(allPods.Items[i].Name, "--"+name) || allPods.Items[i].Name == name {
+					pod = &allPods.Items[i]
+					found = true
+					break
+				}
+			}
+			if !found {
+				writeError(w, 404, fmt.Sprintf("no pod found for sandbox %s", name))
+				return
+			}
+		}
 	}
 
 	containerName := "agent"
@@ -747,11 +775,16 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	// Enable providers v2
+	// Enable providers v2 and policy proposals
 	_, err := s.execOnGateway(ctx, req.Namespace, req.Gateway,
 		"openshell settings set --global --key providers_v2_enabled --value true --yes")
 	if err != nil {
 		log.Printf("warning: failed to enable providers_v2: %v", err)
+	}
+	_, err = s.execOnGateway(ctx, req.Namespace, req.Gateway,
+		"openshell settings set --global --key agent_policy_proposals_enabled --value true --yes")
+	if err != nil {
+		log.Printf("warning: failed to enable agent_policy_proposals: %v", err)
 	}
 
 	// Only set inference if not already configured
