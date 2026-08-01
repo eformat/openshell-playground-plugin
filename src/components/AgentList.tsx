@@ -36,11 +36,11 @@ const AgentList: React.FC<AgentListProps> = ({
 }) => {
   const [deleteError, setDeleteError] = React.useState('');
 
-  const handleDelete = async (name: string) => {
+  const handleDelete = async (name: string, agentType?: string) => {
     if (!confirm(`Delete sandbox ${name}?`)) return;
     setDeleteError('');
     try {
-      await api.deleteAgent(name, namespace);
+      await api.deleteAgent(name, namespace, agentType);
       onRefresh();
     } catch (err: any) {
       setDeleteError(err.message || 'Delete failed');
@@ -80,6 +80,7 @@ const AgentList: React.FC<AgentListProps> = ({
           <Thead>
             <Tr>
               <Th>Name</Th>
+              <Th>Workspace</Th>
               <Th>Agent</Th>
               <Th>Model</Th>
               <Th>Status</Th>
@@ -92,6 +93,9 @@ const AgentList: React.FC<AgentListProps> = ({
             {agents.map((agent) => (
               <Tr key={agent.name}>
                 <Td dataLabel="Name">{agent.name}</Td>
+                <Td dataLabel="Workspace">
+                  <span style={{ textTransform: 'capitalize' }}>{(agent as any).workspace || agent.agentType || '—'}</span>
+                </Td>
                 <Td dataLabel="Agent">
                   <span style={{ textTransform: 'capitalize' }}>{agent.agentType || '—'}</span>
                 </Td>
@@ -117,7 +121,7 @@ const AgentList: React.FC<AgentListProps> = ({
                   <Button
                     variant="danger"
                     size="sm"
-                    onClick={() => handleDelete(agent.name)}
+                    onClick={() => handleDelete(agent.name, agent.agentType)}
                   >
                     Delete
                   </Button>

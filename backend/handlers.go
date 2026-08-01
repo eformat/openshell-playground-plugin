@@ -244,11 +244,22 @@ func (s *server) handleAgentTypes(w http.ResponseWriter, r *http.Request) {
 	writeJSON(w, result)
 }
 
-func (s *server) execOnGateway(ctx context.Context, ns, gateway, command string) (string, error) {
-	if gateway != "" {
-		return execInNamedGateway(ctx, s.client, s.baseConfig, ns, gateway, command)
-	}
+// execOnGateway executes a command in the singleton gateway pod.
+// In workspace architecture, the gateway parameter is now the workspace name
+// and is prepended to commands as --workspace {workspace}.
+func (s *server) execOnGateway(ctx context.Context, ns, _ /*workspace*/, command string) (string, error) {
 	return execInGateway(ctx, s.client, s.baseConfig, ns, command)
+}
+
+// execOnWorkspace executes a workspace-scoped openshell command.
+func (s *server) execOnWorkspace(ctx context.Context, ns, workspace, command string) (string, error) {
+	var cmd string
+	if workspace != "" {
+		cmd = fmt.Sprintf("openshell --workspace %s %s", workspace, command)
+	} else {
+		cmd = fmt.Sprintf("openshell %s", command)
+	}
+	return execInGateway(ctx, s.client, s.baseConfig, ns, cmd)
 }
 
 func (s *server) handleProviders(w http.ResponseWriter, r *http.Request) {
@@ -261,7 +272,7 @@ func (s *server) handleProviders(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 400, "namespace required")
 			return
 		}
-		output, err := s.execOnGateway(r.Context(), ns, gw, "openshell provider list --output json")
+		output, err := s.execOnWorkspace(r.Context(), ns, gw, "provider list --output json")
 		if err != nil {
 			log.Printf("failed to list providers: %v", err)
 			writeJSON(w, []interface{}{})
@@ -327,7 +338,7 @@ func (s *server) handleProviders(w http.ResponseWriter, r *http.Request) {
 				_, _ = s.execOnGateway(r.Context(), req.Namespace, req.Gateway, writeCmd)
 			}
 
-			args := fmt.Sprintf("openshell provider create --name %s --type %s --from-gcloud-adc", req.Name, req.Type)
+			args := fmt.Sprintf("provider create --name %s --type %s --from-gcloud-adc", req.Name, req.Type)
 			for k, v := range req.Credentials {
 				if configKeys[k] {
 					esc := strings.ReplaceAll(v, "'", "'\\''")
@@ -335,7 +346,7 @@ func (s *server) handleProviders(w http.ResponseWriter, r *http.Request) {
 				}
 			}
 
-			_, err := s.execOnGateway(r.Context(), req.Namespace, req.Gateway, args)
+			_, err := s.execOnWorkspace(r.Context(), req.Namespace, req.Gateway, args)
 			if err != nil {
 				writeError(w, 500, fmt.Sprintf("failed to create provider: %v", err))
 				return
@@ -344,7 +355,7 @@ func (s *server) handleProviders(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		args := fmt.Sprintf("openshell provider create --name %s --type %s", req.Name, req.Type)
+		args := fmt.Sprintf("provider create --name %s --type %s", req.Name, req.Type)
 		hasCredential := false
 		for k, v := range req.Credentials {
 			escaped := strings.ReplaceAll(v, "'", "'\\''")
@@ -359,7 +370,7 @@ func (s *server) handleProviders(w http.ResponseWriter, r *http.Request) {
 			args += " --from-gcloud-adc"
 		}
 
-		_, err := s.execOnGateway(r.Context(), req.Namespace, req.Gateway, args)
+		_, err := s.execOnWorkspace(r.Context(), req.Namespace, req.Gateway, args)
 		if err != nil {
 			writeError(w, 500, fmt.Sprintf("failed to create provider: %v", err))
 			return
@@ -380,8 +391,8 @@ func (s *server) handleProviders(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 403, err.Error())
 			return
 		}
-		cmd := fmt.Sprintf("openshell provider delete %s", name)
-		_, err := s.execOnGateway(r.Context(), ns, gw, cmd)
+		cmd := fmt.Sprintf("provider delete %s", name)
+		_, err := s.execOnWorkspace(r.Context(), ns, gw, cmd)
 		if err != nil {
 			writeError(w, 500, fmt.Sprintf("failed to delete provider: %v", err))
 			return
@@ -468,8 +479,6 @@ func (s *server) handleAgents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userClient, _, _ := s.userClients(r)
-
 	ctx, cancel := context.WithTimeout(r.Context(), 15*time.Second)
 	defer cancel()
 
@@ -477,102 +486,78 @@ func (s *server) handleAgents(w http.ResponseWriter, r *http.Request) {
 		Name      string `json:"name"`
 		Namespace string `json:"namespace"`
 		AgentType string `json:"agentType"`
+		Workspace string `json:"workspace"`
 		Status    string `json:"status"`
 		Provider  string `json:"provider"`
 		Model     string `json:"model"`
 		Age       string `json:"age"`
 	}
 
-	// Find all gateways in the namespace
-	pods, _ := userClient.CoreV1().Pods(ns).List(ctx, metav1.ListOptions{
-		LabelSelector: "app=openshell,openshell.ai/agent-type",
-	})
-
-	// Query each gateway's sandbox list and merge by name (keep richest labels)
+	// Workspace architecture: list all sandboxes across all workspaces from singleton gateway
 	merged := map[string]*agentInfo{}
 
-	if pods != nil {
-		for _, pod := range pods.Items {
-			gwAgentType := pod.Labels["openshell.ai/agent-type"]
-			stsName := ""
-			for _, ref := range pod.OwnerReferences {
-				if ref.Kind == "StatefulSet" {
-					stsName = ref.Name
+	// Get all workspaces from the gateway
+	wsOut, wsErr := execInGateway(ctx, s.client, s.baseConfig, ns, "openshell workspace list --output json")
+	var workspaces []struct {
+		Name string `json:"name"`
+	}
+	if wsErr == nil {
+		json.Unmarshal([]byte(wsOut), &workspaces)
+	}
+
+	// Per-workspace: get inference config and sandbox list
+	for _, ws := range workspaces {
+		gwProvider := ""
+		gwModel := ""
+		if out, err := s.execOnWorkspace(ctx, ns, ws.Name, "inference get"); err == nil {
+			for _, line := range strings.Split(out, "\n") {
+				cleaned := strings.ReplaceAll(line, "\x1b[2m", "")
+				cleaned = strings.ReplaceAll(cleaned, "\x1b[0m", "")
+				cleaned = strings.TrimSpace(cleaned)
+				if strings.HasPrefix(cleaned, "Provider:") {
+					gwProvider = strings.TrimSpace(strings.TrimPrefix(cleaned, "Provider:"))
+				}
+				if strings.HasPrefix(cleaned, "Model:") {
+					gwModel = strings.TrimSpace(strings.TrimPrefix(cleaned, "Model:"))
 				}
 			}
-			if stsName == "" {
-				continue
-			}
+		}
 
-			// Get inference info for this gateway
-			gwProvider := ""
-			gwModel := ""
-			if out, err := s.execOnGateway(ctx, ns, stsName, "openshell inference get"); err == nil {
-				for _, line := range strings.Split(out, "\n") {
-					cleaned := strings.ReplaceAll(line, "\x1b[2m", "")
-					cleaned = strings.ReplaceAll(cleaned, "\x1b[0m", "")
-					cleaned = strings.TrimSpace(cleaned)
-					if strings.HasPrefix(cleaned, "Provider:") {
-						gwProvider = strings.TrimSpace(strings.TrimPrefix(cleaned, "Provider:"))
-					}
-					if strings.HasPrefix(cleaned, "Model:") {
-						gwModel = strings.TrimSpace(strings.TrimPrefix(cleaned, "Model:"))
-					}
-				}
+		sbOut, err := s.execOnWorkspace(ctx, ns, ws.Name, "sandbox list --output json")
+		if err != nil {
+			continue
+		}
+		var sandboxes []struct {
+			Name      string            `json:"name"`
+			Phase     string            `json:"phase"`
+			CreatedAt string            `json:"created_at"`
+			Labels    map[string]string `json:"labels"`
+		}
+		if json.Unmarshal([]byte(sbOut), &sandboxes) != nil {
+			continue
+		}
+		for _, sb := range sandboxes {
+			at := sb.Labels["agent-type"]
+			if at == "" {
+				at = ws.Name
 			}
-
-			gwOut, err := s.execOnGateway(ctx, ns, stsName, "openshell sandbox list --output json")
-			if err != nil {
-				continue
+			m := sb.Labels["model"]
+			if m == "" {
+				m = gwModel
 			}
-
-			var gwSandboxes []struct {
-				Name      string            `json:"name"`
-				Phase     string            `json:"phase"`
-				CreatedAt string            `json:"created_at"`
-				Labels    map[string]string `json:"labels"`
+			age := sb.CreatedAt
+			if t, err := time.Parse("2006-01-02 15:04:05", sb.CreatedAt); err == nil {
+				age = time.Since(t).Truncate(time.Second).String()
 			}
-			if json.Unmarshal([]byte(gwOut), &gwSandboxes) != nil {
-				continue
+			status := "Running"
+			if sb.Phase == "Provisioning" {
+				status = "Pending"
+			} else if sb.Phase != "Ready" {
+				status = sb.Phase
 			}
-
-			for _, sb := range gwSandboxes {
-				at := sb.Labels["agent-type"]
-				m := sb.Labels["model"]
-
-				// If this gateway has labels for this sandbox, it's the owner
-				if at != "" {
-					age := sb.CreatedAt
-					if t, err := time.Parse("2006-01-02 15:04:05", sb.CreatedAt); err == nil {
-						age = time.Since(t).Truncate(time.Second).String()
-					}
-					status := "Running"
-					if sb.Phase == "Provisioning" {
-						status = "Pending"
-					} else if sb.Phase != "Ready" {
-						status = sb.Phase
-					}
-					merged[sb.Name] = &agentInfo{
-						Name: sb.Name, Namespace: ns, AgentType: at, Status: status,
-						Provider: gwProvider, Model: m, Age: age,
-					}
-				} else if _, exists := merged[sb.Name]; !exists {
-					// No labels — only add if not already present from another gateway
-					age := sb.CreatedAt
-					if t, err := time.Parse("2006-01-02 15:04:05", sb.CreatedAt); err == nil {
-						age = time.Since(t).Truncate(time.Second).String()
-					}
-					status := "Running"
-					if sb.Phase == "Provisioning" {
-						status = "Pending"
-					} else if sb.Phase != "Ready" {
-						status = sb.Phase
-					}
-					merged[sb.Name] = &agentInfo{
-						Name: sb.Name, Namespace: ns, AgentType: gwAgentType, Status: status,
-						Provider: gwProvider, Model: gwModel, Age: age,
-					}
-				}
+			merged[sb.Name] = &agentInfo{
+				Name: sb.Name, Namespace: ns, AgentType: at, Workspace: ws.Name, Status: status,
+				Provider: gwProvider, Model: m, Age: age,
 			}
 		}
 	}
@@ -598,7 +583,7 @@ func (s *server) handleInference(w http.ResponseWriter, r *http.Request) {
 
 	provider := ""
 	model := ""
-	if out, err := s.execOnGateway(ctx, ns, gw, "openshell inference get"); err == nil {
+	if out, err := s.execOnWorkspace(ctx, ns, gw, "inference get"); err == nil {
 		for _, line := range strings.Split(out, "\n") {
 			cleaned := strings.ReplaceAll(line, "\x1b[2m", "")
 			cleaned = strings.ReplaceAll(cleaned, "\x1b[0m", "")
@@ -710,8 +695,9 @@ func (s *server) handleDeleteAgent(w http.ResponseWriter, r *http.Request, name,
 		return
 	}
 
-	cmd := fmt.Sprintf("openshell sandbox delete %s", name)
-	_, err := s.execOnGateway(r.Context(), ns, "", cmd)
+	workspace := r.URL.Query().Get("workspace")
+	cmd := fmt.Sprintf("sandbox delete %s", name)
+	_, err := s.execOnWorkspace(r.Context(), ns, workspace, cmd)
 	if err != nil {
 		writeError(w, 500, fmt.Sprintf("failed to delete sandbox: %v", err))
 		return
@@ -775,28 +761,28 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 
 	ctx := r.Context()
 
-	// Enable providers v2 and policy proposals
-	_, err := s.execOnGateway(ctx, req.Namespace, req.Gateway,
+	// Enable providers v2 and policy proposals (global, not workspace-scoped)
+	_, err := execInGateway(ctx, s.client, s.baseConfig, req.Namespace,
 		"openshell settings set --global --key providers_v2_enabled --value true --yes")
 	if err != nil {
 		log.Printf("warning: failed to enable providers_v2: %v", err)
 	}
-	_, err = s.execOnGateway(ctx, req.Namespace, req.Gateway,
+	_, err = execInGateway(ctx, s.client, s.baseConfig, req.Namespace,
 		"openshell settings set --global --key agent_policy_proposals_enabled --value true --yes")
 	if err != nil {
 		log.Printf("warning: failed to enable agent_policy_proposals: %v", err)
 	}
 
-	// Only set inference if not already configured
-	inferOut, _ := s.execOnGateway(ctx, req.Namespace, req.Gateway, "openshell inference get")
+	// Only set inference if not already configured for this workspace
+	inferOut, _ := s.execOnWorkspace(ctx, req.Namespace, req.Gateway, "inference get")
 	if strings.Contains(inferOut, "Not configured") && req.Provider != "" {
-		inferCmd := fmt.Sprintf("openshell inference set --provider %s --no-verify", req.Provider)
+		inferCmd := fmt.Sprintf("inference set --provider %s --no-verify", req.Provider)
 		if req.Model != "" {
 			inferCmd += fmt.Sprintf(" --model %s", req.Model)
 		} else {
 			inferCmd += " --model claude-sonnet-4-6"
 		}
-		_, err = s.execOnGateway(ctx, req.Namespace, req.Gateway, inferCmd)
+		_, err = s.execOnWorkspace(ctx, req.Namespace, req.Gateway, inferCmd)
 		if err != nil {
 			log.Printf("warning: failed to set inference: %v", err)
 		}
@@ -816,7 +802,7 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 	for i := 1; i <= req.Count; i++ {
 		name := fmt.Sprintf("sandbox-%s", randSuffix())
 
-		createCmd := fmt.Sprintf("openshell sandbox create --name %s", name)
+		createCmd := fmt.Sprintf("sandbox create --name %s", name)
 		if req.AgentType != "" {
 			createCmd += fmt.Sprintf(" --from %s", req.AgentType)
 		}
@@ -836,7 +822,7 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 			createCmd += fmt.Sprintf(" --warm-pool %s", req.WarmPool)
 		}
 
-		_, err := s.execOnGateway(ctx, req.Namespace, req.Gateway, createCmd)
+		_, err := s.execOnWorkspace(ctx, req.Namespace, req.Gateway, createCmd)
 		if err != nil {
 			writeError(w, 500, fmt.Sprintf("failed to create sandbox %s: %v", name, err))
 			return

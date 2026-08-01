@@ -24,6 +24,7 @@ export interface AgentInfo {
   name: string;
   namespace: string;
   agentType: string;
+  workspace: string;
   status: string;
   sandbox: string;
   provider: string;

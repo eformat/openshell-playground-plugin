@@ -93,10 +93,10 @@ export async function deploy(req: DeployRequest): Promise<DeployResponse> {
   });
 }
 
-export async function deleteAgent(name: string, namespace: string): Promise<void> {
-  await request(`/agents/${encodeURIComponent(name)}?ns=${encodeURIComponent(namespace)}`, {
-    method: 'DELETE',
-  });
+export async function deleteAgent(name: string, namespace: string, workspace?: string): Promise<void> {
+  let url = `/agents/${encodeURIComponent(name)}?ns=${encodeURIComponent(namespace)}`;
+  if (workspace) url += `&workspace=${encodeURIComponent(workspace)}`;
+  await request(url, { method: 'DELETE' });
 }
 
 export async function getAgentPod(name: string, namespace: string): Promise<PodInfo> {

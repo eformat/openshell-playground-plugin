@@ -7,15 +7,8 @@ interface OpenshellTermProps {
 }
 
 const OpenshellTerm: React.FC<OpenshellTermProps> = React.memo(({ namespace, gateways }) => {
-  const [activeTab, setActiveTab] = React.useState('');
   const [fullscreen, setFullscreen] = React.useState(false);
   const containerRef = React.useRef<HTMLDivElement>(null);
-
-  React.useEffect(() => {
-    if (gateways.length > 0 && !activeTab) {
-      setActiveTab(gateways[0].name);
-    }
-  }, [gateways, activeTab]);
 
   const toggleFullscreen = React.useCallback(() => {
     if (!containerRef.current) return;
@@ -34,42 +27,27 @@ const OpenshellTerm: React.FC<OpenshellTermProps> = React.memo(({ namespace, gat
 
   if (!namespace || gateways.length === 0) return null;
 
-  const ttydUrl = (gwName: string) =>
-    `/api/proxy/plugin/openshell-playground-plugin/backend/api/ttyd/?ns=${encodeURIComponent(namespace)}&service=${encodeURIComponent(gwName)}`;
+  const ttydUrl = `/api/proxy/plugin/openshell-playground-plugin/backend/api/ttyd/?ns=${encodeURIComponent(namespace)}&service=openshell`;
 
   return (
     <div className="os-term-panel" ref={containerRef}>
       <div className="os-term-panel__header">
         <div className="os-term-panel__tabs">
-          {gateways.map((gw) => (
-            <button
-              key={gw.name}
-              className={`os-term-panel__tab ${gw.name === activeTab ? 'os-term-panel__tab--active' : ''}`}
-              onClick={() => setActiveTab(gw.name)}
-            >
-              <span style={{ textTransform: 'capitalize' }}>{gw.agentType}</span>
-            </button>
-          ))}
+          <span style={{ padding: '6px 12px', fontSize: 13, fontWeight: 600, color: 'var(--pf-t--global--text--color--regular)' }}>
+            Gateway TUI
+          </span>
         </div>
         <button className="os-fullscreen-btn" onClick={toggleFullscreen} title={fullscreen ? 'Exit fullscreen (Esc)' : 'Fullscreen'}>
           {fullscreen ? '✖' : '⤢'}
         </button>
       </div>
       <div className="os-term-panel__body">
-        {gateways.map((gw) => (
-          <iframe
-            key={gw.name}
-            src={ttydUrl(gw.name)}
-            style={{
-              width: '100%',
-              height: '100%',
-              border: 'none',
-              display: gw.name === activeTab ? 'block' : 'none',
-            }}
-            title={`OpenShell TUI - ${gw.agentType}`}
-            allow="clipboard-read; clipboard-write"
-          />
-        ))}
+        <iframe
+          src={ttydUrl}
+          style={{ width: '100%', height: '100%', border: 'none', display: 'block' }}
+          title="OpenShell Gateway TUI"
+          allow="clipboard-read; clipboard-write"
+        />
       </div>
     </div>
   );

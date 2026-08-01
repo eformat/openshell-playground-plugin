@@ -34,9 +34,12 @@ const GatewayPanel: React.FC<GatewayPanelProps> = ({ namespace, gateways, onDepl
   const [showCredModal, setShowCredModal] = React.useState(false);
   const [newGwType, setNewGwType] = React.useState('');
 
+  const [sandboxAgentType, setSandboxAgentType] = React.useState(AGENT_TYPES[0].name);
+
   const selectedGw = gateways.find((g) => g.name === selectedGateway);
-  const agentType = selectedGw?.agentType || '';
-  const agentInfo = AGENT_TYPES.find((a) => a.name === agentType);
+  // Workspace name may match an agent type (e.g. "claude") or be generic ("default")
+  const workspaceName = selectedGw?.name || '';
+  const agentInfo = AGENT_TYPES.find((a) => a.name === sandboxAgentType);
   const suggestedModels = agentInfo?.models || [];
 
   // Auto-select first gateway
@@ -67,13 +70,13 @@ const GatewayPanel: React.FC<GatewayPanelProps> = ({ namespace, gateways, onDepl
   }, [namespace, selectedGateway]);
 
   const handleDeleteGateway = async (gwName: string) => {
-    if (!confirm(`Delete gateway "${gwName}" and all its resources?`)) return;
+    if (!confirm(`Delete workspace "${gwName}" and its sandboxes?`)) return;
     try {
       await api.deleteGateway(namespace, gwName);
       if (selectedGateway === gwName) setSelectedGateway('');
       onGatewaysChanged();
     } catch (err: any) {
-      setError(err.message || 'Failed to delete gateway');
+      setError(err.message || 'Failed to delete workspace');
     }
   };
 
@@ -118,7 +121,7 @@ const GatewayPanel: React.FC<GatewayPanelProps> = ({ namespace, gateways, onDepl
 
   const handleDeploy = async () => {
     if (!namespace || !selectedGateway || !provider) {
-      setError('Select a gateway, provider, and model');
+      setError('Select a workspace, provider, and model');
       return;
     }
     setLoading(true);
@@ -128,7 +131,7 @@ const GatewayPanel: React.FC<GatewayPanelProps> = ({ namespace, gateways, onDepl
         namespace,
         gateway: selectedGateway,
         agentType: agentInfo?.sandbox || 'base',
-        agentLabel: agentType,
+        agentLabel: sandboxAgentType,
         provider,
         warmPool: '',
         count,
@@ -149,7 +152,7 @@ const GatewayPanel: React.FC<GatewayPanelProps> = ({ namespace, gateways, onDepl
   return (
     <div className="os-gateway-panel">
       <div className="os-gateway-panel__header">
-        <Title headingLevel="h3" size="lg">Gateways</Title>
+        <Title headingLevel="h3" size="lg">Workspaces</Title>
       </div>
 
       <div className="os-gateway-panel__tabs">
@@ -159,7 +162,7 @@ const GatewayPanel: React.FC<GatewayPanelProps> = ({ namespace, gateways, onDepl
               className={`os-gateway-tab ${gw.name === selectedGateway ? 'os-gateway-tab--active' : ''}`}
               onClick={() => setSelectedGateway(gw.name)}
             >
-              <span style={{ textTransform: 'capitalize' }}>{gw.agentType}</span>
+              <span style={{ textTransform: 'capitalize' }}>{gw.name}</span>
               {gw.status === 'Running' ? (
                 <span className="os-status-dot os-status-dot--running" />
               ) : (
@@ -169,8 +172,8 @@ const GatewayPanel: React.FC<GatewayPanelProps> = ({ namespace, gateways, onDepl
             <button
               className="os-gateway-tab__delete"
               onClick={() => handleDeleteGateway(gw.name)}
-              aria-label={`Delete ${gw.agentType} gateway`}
-              title="Delete gateway"
+              aria-label={`Delete ${gw.name} workspace`}
+              title="Delete workspace"
             >x</button>
           </div>
         ))}
@@ -178,20 +181,20 @@ const GatewayPanel: React.FC<GatewayPanelProps> = ({ namespace, gateways, onDepl
           <div style={{ display: 'flex', gap: 4, alignItems: 'center' }}>
             {newGwType ? (
               <>
-                <FormSelect value={newGwType} onChange={(_e, val) => setNewGwType(val)} style={{ width: 120 }}>
-                  <FormSelectOption value="" label="Type..." isDisabled />
+                <FormSelect value={newGwType} onChange={(_e, val) => setNewGwType(val)} style={{ width: 140 }}>
+                  <FormSelectOption value="" label="Workspace..." isDisabled />
                   {availableTypes.map((a) => (
                     <FormSelectOption key={a.name} value={a.name} label={a.displayName} />
                   ))}
                 </FormSelect>
                 <Button size="sm" variant="primary" isLoading={deployingGw} isDisabled={!newGwType || deployingGw} onClick={() => handleDeployGateway(newGwType)}>
-                  Deploy
+                  Add
                 </Button>
                 <Button size="sm" variant="plain" onClick={() => setNewGwType('')}>x</Button>
               </>
             ) : (
               <Button size="sm" variant="secondary" onClick={() => setNewGwType(availableTypes[0]?.name || '')}>
-                + Gateway
+                + Workspace
               </Button>
             )}
           </div>
@@ -220,17 +223,25 @@ const GatewayPanel: React.FC<GatewayPanelProps> = ({ namespace, gateways, onDepl
             </div>
           </FormGroup>
 
+          <FormGroup label="Agent Type" fieldId="sandbox-agent-type">
+            <FormSelect id="sandbox-agent-type" value={sandboxAgentType} onChange={(_e, val) => setSandboxAgentType(val)}>
+              {AGENT_TYPES.map((at) => (
+                <FormSelectOption key={at.name} value={at.name} label={at.displayName} />
+              ))}
+            </FormSelect>
+          </FormGroup>
+
           <FormGroup label="Model" fieldId="model">
             <input
               id="model"
-              list={`model-${agentType}`}
+              list={`model-${sandboxAgentType}`}
               value={model}
               onChange={(e) => setModel(e.target.value)}
               placeholder="Enter model ID"
               className="pf-v6-c-form-control"
               style={{ width: '100%' }}
             />
-            <datalist id={`model-${agentType}`}>
+            <datalist id={`model-${sandboxAgentType}`}>
               {suggestedModels.map((m) => (
                 <option key={m.id} value={m.id}>{m.label}</option>
               ))}
@@ -247,7 +258,7 @@ const GatewayPanel: React.FC<GatewayPanelProps> = ({ namespace, gateways, onDepl
               onChange={(e) => { const v = parseInt((e.target as HTMLInputElement).value, 10); if (!isNaN(v) && v >= 1 && v <= 10) setCount(v); }}
               widthChars={2}
             />
-            {agentType && <Label color="blue" style={{ marginLeft: 8 }}>{agentType}</Label>}
+            {workspaceName && <Label color="blue" style={{ marginLeft: 8 }}>{workspaceName}</Label>}
           </div>
         </div>
       )}
