@@ -1,79 +1,107 @@
-# Gateway Configuration
+# Workspace Configuration
 
-<span class="badge">Topics: Per-Agent Gateways, Deploy, Delete, Inference</span>
+<span class="badge">Topics: Workspaces, Providers, Inference, Deploy</span>
 
-Each agent type (Claude, Codex, OpenCode, etc.) runs on its own gateway. A gateway is an OpenShell server that manages sandboxes, providers, and inference routing for one agent type.
+OpenShell Playground uses a single **gateway** per namespace with multiple **workspaces**. Each workspace has its own independently configured inference route, providers, and sandboxes — so different agent types (Claude, Codex, Pi) can each have their own model and provider without needing separate gateway pods.
 
-![images/gateway-panel.png](images/gateway-panel.png)
-
----
-
-## Why Per-Agent Gateways?
-
-OpenShell has **one inference route per gateway**. All sandboxes on a gateway share the same provider and model via `inference.local`. This means you need a separate gateway for each agent type so they can each have their own provider configuration.
-
-For example:
-- **Claude gateway** → Vertex AI provider → `claude-sonnet-4-6`
-- **Codex gateway** → OpenAI provider → `gpt-5.4`
-- **OpenCode gateway** → MaaS provider → `qwen36-27b`
+![images/overview.png](images/overview.png)
 
 ---
 
-## Gateway Tabs
+## Architecture
 
-The gateway panel shows one tab per deployed gateway. Click a tab to switch context — the provider, model, and deploy controls all apply to the selected gateway.
+| Concept | Description |
+|---------|-------------|
+| **Gateway** | A single OpenShell gateway pod (`openshell-0`) per namespace |
+| **Workspace** | An isolation boundary within the gateway — each has its own inference route and providers |
+| **Default workspace** | Created automatically with the gateway; cannot be deleted |
+| **Named workspace** | One per agent type (e.g. `claude`, `pi`, `codex`) |
+
+One gateway supports N workspaces. A sandbox is always created inside a specific workspace and uses that workspace's inference route at runtime.
+
+---
+
+## Workspace Tabs
+
+The **Workspaces** panel shows one tab per workspace. Click a tab to switch context — the provider, model, and deploy controls all apply to the selected workspace.
 
 ![images/gateway-tabs.png](images/gateway-tabs.png)
 
-Each tab shows a green dot when the gateway is running, or a spinner while it's starting up. The **x** button next to each tab deletes the gateway and all its resources.
+The active tab has a green dot when the gateway is running. The **x** button on a tab deletes that workspace (and its sandboxes). Deleting the `Default` workspace tears down the entire gateway.
 
 ---
 
-## Deploying a New Gateway
+## Adding a Workspace
 
-Click **+ Gateway** to add a new agent type. Select from the available types:
+Click **+ Workspace** to add a new workspace. Select the agent type — this both names the workspace and determines which sandbox image to use:
 
-| Agent Type | Sandbox Image | Description |
-|-----------|--------------|-------------|
-| Claude Code | `base` | Anthropic's coding agent |
-| Codex | `base` | OpenAI's coding agent |
-| OpenCode | `base` | Open-source coding agent |
-| Copilot | `base` | GitHub Copilot CLI (BYOK mode) |
-| Pi | `pi` | Minimal terminal coding harness |
-| Hermes | custom | NousResearch Hermes agent framework |
-| Ollama | `ollama` | Bundled Ollama server + Claude Code + Codex |
+![images/add-workspace.png](images/add-workspace.png)
 
-The gateway takes about 30 seconds to deploy. It creates a StatefulSet, Service, ConfigMap, and PVC in your namespace.
+| Agent Type | Sandbox Image | Workspace Name |
+|-----------|--------------|----------------|
+| Claude Code | `base` | `claude` |
+| Codex | `base` | `codex` |
+| OpenCode | `base` | `opencode` |
+| Copilot | `base` | `copilot` |
+| Pi | `pi` | `pi` |
+| Hermes | custom | `hermes` |
+| Ollama | `ollama` | `ollama` |
+
+The gateway pod is shared — only the first workspace creation deploys the pod. Subsequent workspaces are added to the same pod instantly.
 
 ---
 
 ## Provider and Model
 
-Once a gateway is running, configure it with a provider and model:
+Each workspace has its own provider and model configuration:
 
 ![images/deploy-section.png](images/deploy-section.png)
 
-1. **Provider** — select an existing provider or click **+ New provider** to register one
-2. **Model** — type a model ID or select from the suggestions (varies by agent type)
-3. **Deploy Sandbox** — creates a sandbox running the agent with the configured inference
+1. **Provider** — select an existing provider or click **+ New provider** to register one (scoped to this workspace)
+2. **Agent Type** — which sandbox image to use for new sandboxes (independent of workspace name)
+3. **Model** — the model to use for inference in this workspace
+4. **Deploy Sandbox** — creates a sandbox in the selected workspace
 
-The model suggestions are hints. You can type any model ID your provider supports.
+<div class="alert alert-info">
+<strong>Tip</strong>
+<p>Each workspace has its own provider credentials. A Claude workspace can use Vertex AI while a Codex workspace uses OpenAI — all on the same gateway pod.</p>
+</div>
 
 ---
 
-## Deleting a Gateway
+## Provider Configuration
 
-Click the **x** button on a gateway tab. This removes the StatefulSet, Service, ConfigMap, certgen Job, JWT Secret, and PVC. Any sandboxes created by that gateway remain until you delete them individually.
+Providers are registered per workspace. The same provider name can exist independently in different workspaces with different credentials.
 
-<div class="alert alert-warning">
-<strong>Warning</strong>
-<p>Deleting a gateway removes its provider credentials and inference configuration. You will need to re-register providers if you redeploy the gateway.</p>
-</div>
+![images/provider-modal.png](images/provider-modal.png)
+
+See [Provider Configuration](providers) for full details on credential types.
+
+---
+
+## Gateway TUI
+
+The Gateway TUI shows the active workspace's sandboxes and network rules. Press **`w`** inside the TUI (click the terminal area first to focus it) to cycle through workspaces:
+
+`default` → `claude` → `pi` → `all` → `default`
+
+The `all` view shows sandboxes across every workspace.
+
+---
+
+## Deleting a Workspace
+
+Click the **x** on a workspace tab. This:
+- Deletes the workspace and all its sandboxes
+- Keeps the gateway pod running (other workspaces are unaffected)
+- If it's the last workspace, tears down the entire gateway
+
+Deleting **Default** tears down the entire gateway (the default workspace cannot be deleted via OpenShell, so this acts as a "delete everything" action).
 
 ---
 
 ## Next Steps
 
-- [Provider Configuration](providers) — how to register providers with API credentials
+- [Provider Configuration](providers) — register credentials per workspace
 - [Agent List & Sandboxes](agent-list) — deploy and manage sandboxes
-- [OpenShell TUI](openshell-tui) — gateway logs and sandbox details
+- [OpenShell TUI](openshell-tui) — gateway TUI and network rules
