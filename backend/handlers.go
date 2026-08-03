@@ -322,7 +322,13 @@ func (s *server) handleProviders(w http.ResponseWriter, r *http.Request) {
 			"VERTEX_AI_REGION":     true,
 			"OPENAI_BASE_URL":      true,
 			"BASE_URL":             true,
+			"ANTHROPIC_BASE_URL":   true, // config key for anthropic-openai provider
 		}
+
+		// MaaS (Anthropic-compatible): use the native anthropic-openai provider type
+		// which uses AuthHeader::Bearer + ANTHROPIC_AUTH_TOKEN.
+		isAnthropicOpenAI := req.Type == "anthropic-openai"
+		// type stays as "anthropic-openai" — now a first-class provider type in the gateway
 
 		// For Google Vertex AI with ADC JSON, write the file first then use --from-gcloud-adc
 		if req.Type == "google-vertex-ai" {
@@ -375,6 +381,46 @@ func (s *server) handleProviders(w http.ResponseWriter, r *http.Request) {
 			writeError(w, 500, fmt.Sprintf("failed to create provider: %v", err))
 			return
 		}
+
+		// Import the claude-code-maas provider profile so the providers v2 system
+		// can inject ANTHROPIC_AUTH_TOKEN (bearer) and ANTHROPIC_BASE_URL into
+		// the sandbox environment when --provider <name> is used at sandbox create time.
+		if isAnthropicOpenAI {
+			profileYAML := `id: claude-code-maas
+display_name: Claude Code (Anthropic OpenAI-compatible)
+description: Claude Code with bearer token auth for Anthropic-compatible MaaS endpoints
+category: agent
+credentials:
+- name: ANTHROPIC_AUTH_TOKEN
+  description: Bearer auth token for the MaaS endpoint
+  env_vars:
+  - ANTHROPIC_AUTH_TOKEN
+  required: true
+  auth_style: bearer
+  header_name: authorization
+  query_param: ''
+- name: ANTHROPIC_BASE_URL
+  description: Base URL for the MaaS Anthropic-compatible endpoint
+  env_vars:
+  - ANTHROPIC_BASE_URL
+  required: false
+  auth_style: header
+  header_name: anthropic-base-url
+  query_param: ''
+binaries:
+- /usr/bin/claude
+- /usr/local/bin/claude
+inference_capable: true
+discovery:
+  credentials:
+  - ANTHROPIC_AUTH_TOKEN`
+			writeCmd := fmt.Sprintf("cat > /tmp/claude-code-maas.yaml << 'PROFILEEOF'\n%s\nPROFILEEOF", profileYAML)
+			_, _ = s.execOnGateway(r.Context(), req.Namespace, req.Gateway, writeCmd)
+			if _, pErr := s.execOnGateway(r.Context(), req.Namespace, req.Gateway, "openshell provider profile import --global --file /tmp/claude-code-maas.yaml 2>&1"); pErr != nil {
+				_, _ = s.execOnGateway(r.Context(), req.Namespace, req.Gateway, "openshell provider profile update --global --file /tmp/claude-code-maas.yaml claude-code-maas 2>&1")
+			}
+		}
+
 		writeJSON(w, map[string]string{"status": "created", "name": req.Name})
 
 	case http.MethodDelete:
@@ -820,6 +866,9 @@ func (s *server) handleDeploy(w http.ResponseWriter, r *http.Request) {
 		}
 		if req.WarmPool != "" {
 			createCmd += fmt.Sprintf(" --warm-pool %s", req.WarmPool)
+		}
+		if req.Provider != "" {
+			createCmd += fmt.Sprintf(" --provider %s", req.Provider)
 		}
 
 		_, err := s.execOnWorkspace(ctx, req.Namespace, req.Gateway, createCmd)

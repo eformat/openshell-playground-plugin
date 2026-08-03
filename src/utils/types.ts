@@ -71,6 +71,7 @@ export interface CreateProviderRequest {
 export const PROVIDER_TYPES = [
   { id: 'google-vertex-ai', name: 'Google Vertex AI' },
   { id: 'anthropic', name: 'Anthropic' },
+  { id: 'anthropic-openai', name: 'Anthropic OpenAI-compatible' },
   { id: 'openai', name: 'OpenAI / OpenAI-Compatible' },
 ] as const;
 

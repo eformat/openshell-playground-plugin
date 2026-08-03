@@ -74,6 +74,9 @@ const CredentialsModal: React.FC<CredentialsModalProps> = ({
       if (gcpFile) credentials['GOOGLE_APPLICATION_CREDENTIALS_JSON'] = gcpFile;
     } else if (providerType === 'anthropic') {
       if (apiKey) credentials['ANTHROPIC_API_KEY'] = apiKey;
+    } else if (providerType === 'anthropic-openai') {
+      if (apiKey) credentials['ANTHROPIC_AUTH_TOKEN'] = apiKey;
+      if (baseUrl) credentials['ANTHROPIC_BASE_URL'] = baseUrl; // config: gateway reads this as base URL override
     } else if (providerType === 'openai') {
       if (apiKey) credentials['OPENAI_API_KEY'] = apiKey;
       if (baseUrl) credentials['OPENAI_BASE_URL'] = baseUrl;
@@ -215,6 +218,28 @@ const CredentialsModal: React.FC<CredentialsModalProps> = ({
               placeholder="sk-ant-..."
             />
           </FormGroup>
+        )}
+
+        {providerType === 'anthropic-openai' && (
+          <>
+            <FormGroup label="Base URL" isRequired fieldId="maas-url" style={{ marginBottom: 12 }}>
+              <TextInput
+                id="maas-url"
+                value={baseUrl}
+                onChange={(_e, val) => setBaseUrl(val)}
+                placeholder="https://maas.example.com/prelude-maas/model-name"
+              />
+            </FormGroup>
+            <FormGroup label="Auth Token" isRequired fieldId="maas-token">
+              <TextInput
+                id="maas-token"
+                type="password"
+                value={apiKey}
+                onChange={(_e, val) => setApiKey(val)}
+                placeholder="Bearer token or API key"
+              />
+            </FormGroup>
+          </>
         )}
 
         {providerType === 'openai' && (

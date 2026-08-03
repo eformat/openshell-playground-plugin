@@ -28,14 +28,26 @@ export HTTPS_PROXY=http://10.200.0.1:3128 HTTP_PROXY=http://10.200.0.1:3128
 export SSL_CERT_FILE=/etc/openshell-tls/ca-bundle.pem NODE_EXTRA_CA_CERTS=/etc/openshell-tls/openshell-ca.pem
 export CURL_CA_BUNDLE=/etc/openshell-tls/ca-bundle.pem REQUESTS_CA_BUNDLE=/etc/openshell-tls/ca-bundle.pem
 export CODEX_CA_CERTIFICATE=/etc/openshell-tls/ca-bundle.pem GIT_SSL_CAINFO=/etc/openshell-tls/ca-bundle.pem
-export ANTHROPIC_BASE_URL=https://inference.local ANTHROPIC_API_KEY=unused
+export ANTHROPIC_BASE_URL=\${ANTHROPIC_BASE_URL:-https://inference.local}
+[ -z "\$ANTHROPIC_AUTH_TOKEN" ] && export ANTHROPIC_API_KEY=unused
 export OPENAI_BASE_URL=https://inference.local/v1 OPENAI_API_KEY=unused
 export CLAUDE_CODE_DISABLE_EXPERIMENTAL_BETAS=1
 cd /sandbox
 set +m
 trap 'kill 0' EXIT`;
 
-const CLAUDE_SETUP = `echo "Claude Code ready. Run: claude --bare"`;
+const CLAUDE_SETUP = `if [ -n "\$ANTHROPIC_AUTH_TOKEN" ]; then
+  echo "MaaS mode: \$ANTHROPIC_BASE_URL"
+elif [ -n "\$OPENSHELL_USER_ENVIRONMENT" ]; then
+  _MAAS_URL=$(echo "\$OPENSHELL_USER_ENVIRONMENT" | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('ANTHROPIC_BASE_URL',''))" 2>/dev/null)
+  _MAAS_TOKEN=$(echo "\$OPENSHELL_USER_ENVIRONMENT" | python3 -c "import sys,json;d=json.load(sys.stdin);print(d.get('ANTHROPIC_AUTH_TOKEN',''))" 2>/dev/null)
+  if [ -n "\$_MAAS_URL" ] && [ -n "\$_MAAS_TOKEN" ]; then
+    export ANTHROPIC_BASE_URL="\$_MAAS_URL" ANTHROPIC_AUTH_TOKEN="\$_MAAS_TOKEN"
+    unset ANTHROPIC_API_KEY
+    echo "MaaS mode: \$ANTHROPIC_BASE_URL"
+  fi
+fi
+echo "Claude Code ready. Run: claude --bare"`;
 
 const CODEX_SETUP = `mkdir -p /sandbox/.codex
 if [ ! -f /sandbox/.codex/config.toml ]; then
