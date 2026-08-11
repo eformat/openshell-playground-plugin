@@ -61,7 +61,8 @@
     "description": "Deploy and interact with OpenShell agent sandboxes",
     "exposedModules": {
       "PlaygroundPage": "./components/PlaygroundPage",
-      "HelpPage": "./components/HelpPage"
+      "HelpPage": "./components/HelpPage",
+      "GovernancePage": "./components/GovernancePage"
     },
     "dependencies": {
       "@console/pluginAPI": "*"

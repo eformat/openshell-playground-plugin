@@ -40,5 +40,23 @@
       "perspective": "admin",
       "section": "openshell"
     }
+  },
+  {
+    "type": "console.page/route",
+    "properties": {
+      "exact": true,
+      "path": "/openshell/governance",
+      "component": { "$codeRef": "GovernancePage" }
+    }
+  },
+  {
+    "type": "console.navigation/href",
+    "properties": {
+      "id": "openshell-governance",
+      "name": "Governance",
+      "href": "/openshell/governance",
+      "perspective": "admin",
+      "section": "openshell"
+    }
   }
 ]

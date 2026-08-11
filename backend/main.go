@@ -112,6 +112,8 @@ func main() {
 	mux.HandleFunc("/api/gateway/deploy", s.handleGatewayDeploy)
 	mux.HandleFunc("/api/gateway/delete", s.handleGatewayDelete)
 	mux.HandleFunc("/api/gateways", s.handleListGateways)
+	mux.HandleFunc("/api/governance/policies", s.handleGovernancePolicies)
+	mux.HandleFunc("/api/governance/proposals", s.handleGovernanceProposals)
 	mux.HandleFunc("/api/ttyd/", s.handleTtydProxy)
 
 	distDir := os.Getenv("PLUGIN_DIST_DIR")

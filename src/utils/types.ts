@@ -164,3 +164,39 @@ export const AGENT_TYPES: AgentTypeInfo[] = [
     ],
   },
 ];
+
+// Governance / Policy types
+
+export interface GlobalPolicyInfo {
+  exists: boolean;
+  status: 'loaded' | 'failed' | 'none';
+  network_policies: number;
+}
+
+export interface SandboxPolicyInfo {
+  name: string;
+  workspace: string;
+  status: 'loaded' | 'failed' | 'none';
+  network_policies: number;
+  pending_proposals: number;
+}
+
+export interface GovernancePoliciesResponse {
+  global: GlobalPolicyInfo;
+  sandboxes: SandboxPolicyInfo[];
+}
+
+export interface ProverFinding {
+  category: 'link_local_reach' | 'l7_bypass_credentialed' | 'credential_reach_expansion' | 'capability_expansion';
+  detail: string;
+}
+
+export interface ProposalInfo {
+  id: string;
+  sandbox: string;
+  workspace: string;
+  intent_summary: string;
+  endpoints: string;
+  status: 'pending' | 'approved' | 'rejected';
+  prover_findings: ProverFinding[];
+}

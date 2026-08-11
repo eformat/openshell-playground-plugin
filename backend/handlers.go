@@ -934,3 +934,282 @@ func (s *server) handleGatewayPod(w http.ResponseWriter, r *http.Request) {
 		"status":        string(pod.Status.Phase),
 	})
 }
+
+// ansiRE strips ANSI terminal escape sequences from CLI output.
+var ansiRE = regexp.MustCompile(`\x1b\[[0-9;]*[a-zA-Z]`)
+
+func stripAnsi(s string) string {
+	return ansiRE.ReplaceAllString(s, "")
+}
+
+// parsePolicyStatus reads the text table from "openshell policy list <name>".
+// Returns the current (non-superseded) row's status, lowercased.
+func parsePolicyStatus(output string) string {
+	clean := stripAnsi(output)
+	for _, line := range strings.Split(clean, "\n") {
+		fields := strings.Fields(line)
+		if len(fields) < 3 {
+			continue
+		}
+		if fields[0] == "VERSION" {
+			continue
+		}
+		status := strings.ToLower(fields[2])
+		if status == "loaded" || status == "failed" {
+			return status
+		}
+	}
+	return "none"
+}
+
+type ruleChunk struct {
+	ID          string
+	Status      string
+	Rule        string
+	Rationale   string
+	Endpoints   string
+	Binary      string
+	ProverNotes string
+}
+
+// parseRuleChunks parses "openshell rule get <name>" text output into chunks.
+func parseRuleChunks(output string) []ruleChunk {
+	clean := stripAnsi(output)
+	var chunks []ruleChunk
+	var cur *ruleChunk
+	for _, line := range strings.Split(clean, "\n") {
+		line = strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(line, "Chunk:"):
+			if cur != nil && cur.Status != "" {
+				chunks = append(chunks, *cur)
+			}
+			cur = &ruleChunk{ID: strings.TrimSpace(strings.TrimPrefix(line, "Chunk:"))}
+		case cur == nil:
+			// skip lines before first Chunk:
+		case strings.HasPrefix(line, "Status:"):
+			cur.Status = strings.ToLower(strings.TrimSpace(strings.TrimPrefix(line, "Status:")))
+		case strings.HasPrefix(line, "Rule:"):
+			cur.Rule = strings.TrimSpace(strings.TrimPrefix(line, "Rule:"))
+		case strings.HasPrefix(line, "Rationale:"):
+			cur.Rationale = strings.TrimSpace(strings.TrimPrefix(line, "Rationale:"))
+		case strings.HasPrefix(line, "Endpoints:"):
+			cur.Endpoints = strings.TrimSpace(strings.TrimPrefix(line, "Endpoints:"))
+		case strings.HasPrefix(line, "Binary:"):
+			cur.Binary = strings.TrimSpace(strings.TrimPrefix(line, "Binary:"))
+		case strings.HasPrefix(line, "Validation:"):
+			cur.ProverNotes = strings.TrimSpace(strings.TrimPrefix(line, "Validation:"))
+		}
+	}
+	if cur != nil && cur.Status != "" {
+		chunks = append(chunks, *cur)
+	}
+	return chunks
+}
+
+// handleGovernancePolicies returns global and per-sandbox policy status.
+// GET /api/governance/policies?ns=<namespace>
+func (s *server) handleGovernancePolicies(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, 405, "method not allowed")
+		return
+	}
+
+	ns := r.URL.Query().Get("ns")
+	if ns == "" {
+		writeError(w, 400, "namespace required")
+		return
+	}
+
+	ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
+	defer cancel()
+
+	type sandboxPolicyInfo struct {
+		Name             string `json:"name"`
+		Workspace        string `json:"workspace"`
+		Status           string `json:"status"`
+		NetworkPolicies  int    `json:"network_policies"`
+		PendingProposals int    `json:"pending_proposals"`
+	}
+
+	type globalPolicyInfo struct {
+		Exists          bool   `json:"exists"`
+		Status          string `json:"status"`
+		NetworkPolicies int    `json:"network_policies"`
+	}
+
+	type response struct {
+		Global    globalPolicyInfo    `json:"global"`
+		Sandboxes []sandboxPolicyInfo `json:"sandboxes"`
+	}
+
+	result := response{
+		Global:    globalPolicyInfo{Exists: false, Status: "none"},
+		Sandboxes: []sandboxPolicyInfo{},
+	}
+
+	// Query global policy (text table, no --output json).
+	globalOut, err := execInGateway(ctx, s.client, s.baseConfig, ns, "openshell policy list --global 2>/dev/null")
+	if err == nil && globalOut != "" {
+		st := parsePolicyStatus(globalOut)
+		if st != "none" {
+			result.Global.Exists = true
+			result.Global.Status = st
+		}
+	}
+
+	// List workspaces to find all sandboxes.
+	wsOut, wsErr := execInGateway(ctx, s.client, s.baseConfig, ns, "openshell workspace list --output json")
+	var workspaces []struct {
+		Name string `json:"name"`
+	}
+	if wsErr == nil {
+		json.Unmarshal([]byte(wsOut), &workspaces)
+	}
+
+	for _, ws := range workspaces {
+		sbOut, err := execInGateway(ctx, s.client, s.baseConfig, ns,
+			fmt.Sprintf("openshell --workspace %s sandbox list --output json", ws.Name))
+		if err != nil {
+			continue
+		}
+		var sandboxes []struct {
+			Name string `json:"name"`
+		}
+		if json.Unmarshal([]byte(sbOut), &sandboxes) != nil {
+			continue
+		}
+
+		for _, sb := range sandboxes {
+			info := sandboxPolicyInfo{Name: sb.Name, Workspace: ws.Name, Status: "none"}
+
+			// Policy status from "openshell policy list <sandbox>" text table.
+			policyOut, pErr := execInGateway(ctx, s.client, s.baseConfig, ns,
+				fmt.Sprintf("openshell --workspace %s policy list %s 2>/dev/null", ws.Name, sb.Name))
+			if pErr == nil && policyOut != "" {
+				info.Status = parsePolicyStatus(policyOut)
+			}
+
+			// Rule counts from "openshell rule get <sandbox>" text output.
+			rulesOut, rErr := execInGateway(ctx, s.client, s.baseConfig, ns,
+				fmt.Sprintf("openshell --workspace %s rule get %s 2>/dev/null", ws.Name, sb.Name))
+			if rErr == nil && rulesOut != "" {
+				chunks := parseRuleChunks(rulesOut)
+				for _, c := range chunks {
+					if c.Status == "approved" {
+						info.NetworkPolicies++
+					} else if c.Status == "pending" {
+						info.PendingProposals++
+					}
+				}
+			}
+
+			result.Sandboxes = append(result.Sandboxes, info)
+		}
+	}
+
+	writeJSON(w, result)
+}
+
+// handleGovernanceProposals returns pending rule proposals for sandboxes.
+// GET /api/governance/proposals?ns=<namespace>&sandbox=<name>
+func (s *server) handleGovernanceProposals(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodGet {
+		writeError(w, 405, "method not allowed")
+		return
+	}
+
+	ns := r.URL.Query().Get("ns")
+	if ns == "" {
+		writeError(w, 400, "namespace required")
+		return
+	}
+	filterSandbox := r.URL.Query().Get("sandbox")
+
+	ctx, cancel := context.WithTimeout(r.Context(), 45*time.Second)
+	defer cancel()
+
+	type proverFinding struct {
+		Category string `json:"category"`
+		Detail   string `json:"detail"`
+	}
+
+	type proposalInfo struct {
+		ID             string          `json:"id"`
+		Sandbox        string          `json:"sandbox"`
+		Workspace      string          `json:"workspace"`
+		IntentSummary  string          `json:"intent_summary"`
+		Endpoints      string          `json:"endpoints"`
+		Status         string          `json:"status"`
+		ProverFindings []proverFinding `json:"prover_findings"`
+	}
+
+	allProposals := []proposalInfo{}
+
+	// querySandboxProposals runs "openshell rule get <sandbox> --status pending" (workspace-scoped).
+	querySandboxProposals := func(ws, sbName string) {
+		out, err := execInGateway(ctx, s.client, s.baseConfig, ns,
+			fmt.Sprintf("openshell --workspace %s rule get %s --status pending 2>/dev/null", ws, sbName))
+		if err != nil || out == "" {
+			return
+		}
+		for _, chunk := range parseRuleChunks(out) {
+			p := proposalInfo{
+				ID:             chunk.ID,
+				Sandbox:        sbName,
+				Workspace:      ws,
+				IntentSummary:  chunk.Rationale,
+				Endpoints:      chunk.Endpoints,
+				Status:         chunk.Status,
+				ProverFindings: []proverFinding{},
+			}
+			if p.Status == "" {
+				p.Status = "pending"
+			}
+			// Parse prover findings from Validation field.
+			// "prover: no new findings" → empty; otherwise each category is a finding.
+			notes := chunk.ProverNotes
+			if notes != "" && !strings.Contains(notes, "no new findings") {
+				// Strip "prover: " prefix if present.
+				notes = strings.TrimPrefix(notes, "prover: ")
+				for _, cat := range []string{"link_local_reach", "l7_bypass_credentialed", "credential_reach_expansion", "capability_expansion"} {
+					if strings.Contains(notes, cat) {
+						p.ProverFindings = append(p.ProverFindings, proverFinding{Category: cat, Detail: notes})
+					}
+				}
+			}
+			allProposals = append(allProposals, p)
+		}
+	}
+
+	// List workspaces then sandboxes to find proposals.
+	wsOut, wsErr := execInGateway(ctx, s.client, s.baseConfig, ns, "openshell workspace list --output json")
+	var workspaces []struct {
+		Name string `json:"name"`
+	}
+	if wsErr == nil {
+		json.Unmarshal([]byte(wsOut), &workspaces)
+	}
+
+	for _, ws := range workspaces {
+		sbOut, err := execInGateway(ctx, s.client, s.baseConfig, ns,
+			fmt.Sprintf("openshell --workspace %s sandbox list --output json", ws.Name))
+		if err != nil {
+			continue
+		}
+		var sandboxes []struct {
+			Name string `json:"name"`
+		}
+		if json.Unmarshal([]byte(sbOut), &sandboxes) != nil {
+			continue
+		}
+		for _, sb := range sandboxes {
+			if filterSandbox != "" && sb.Name != filterSandbox {
+				continue
+			}
+			querySandboxProposals(ws.Name, sb.Name)
+		}
+	}
+
+	writeJSON(w, allProposals)
+}

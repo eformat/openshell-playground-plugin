@@ -4,8 +4,10 @@ import {
   CreateProviderRequest,
   DeployRequest,
   DeployResponse,
+  GovernancePoliciesResponse,
   NamespaceInfo,
   PodInfo,
+  ProposalInfo,
   ProviderInfo,
   WarmPoolInfo,
 } from './types';
@@ -122,4 +124,14 @@ export async function deployGateway(namespace: string, agentType: string): Promi
     method: 'POST',
     body: JSON.stringify({ namespace, agentType }),
   });
+}
+
+export async function listGovernancePolicies(namespace: string): Promise<GovernancePoliciesResponse> {
+  return request<GovernancePoliciesResponse>(`/governance/policies?ns=${encodeURIComponent(namespace)}`);
+}
+
+export async function listGovernanceProposals(namespace: string, sandbox?: string): Promise<ProposalInfo[]> {
+  let url = `/governance/proposals?ns=${encodeURIComponent(namespace)}`;
+  if (sandbox) url += `&sandbox=${encodeURIComponent(sandbox)}`;
+  return request<ProposalInfo[]>(url);
 }
