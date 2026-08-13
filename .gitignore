@@ -2,7 +2,7 @@
 .playwright-cli/
 node_modules/
 dist/
-backend
+backend/backend
 *.tgz
 .vscode/
 openshell-sandbox
